@@ -18,7 +18,7 @@ CONTAINER_TOOL ?= podman
 PLATFORM ?= linux/amd64
 
 # Linter settings
-GOLANGCI_LINT_VERSION ?= v2.1.6
+GOLANGCI_LINT_VERSION ?= v2.8.0
 
 # .PHONY declarations grouped by category
 .PHONY: all build build-darwin-arm64 build-darwin-amd64 build-linux-amd64 build-all

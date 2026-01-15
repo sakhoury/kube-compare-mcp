@@ -551,7 +551,7 @@ export KUBE_COMPARE_MCP_OCI_VALIDATION_TIMEOUT=60s
 
 ### Prerequisites
 
-- Go 1.24 or later
+- Go 1.25 or later
 - Access to a Kubernetes cluster (for live comparisons)
 - golangci-lint (for linting)
 
