@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: kube-compare-mcp
+  namespace: kube-compare-mcp
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: server
+spec:
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Allow
+  to:
+    kind: Service
+    name: kube-compare-mcp
+    weight: 100
+  wildcardPolicy: None

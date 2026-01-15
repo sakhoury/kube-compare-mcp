@@ -1,0 +1,94 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-compare-mcp
+  namespace: kube-compare-mcp
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-compare-mcp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kube-compare-mcp
+        app.kubernetes.io/component: server
+    spec:
+      serviceAccountName: kube-compare-mcp
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kube-compare-mcp
+          image: quay.io/REPLACE_WITH_YOUR_USERNAME/kube-compare-mcp:latest
+          imagePullPolicy: Always
+          args:
+            - --transport=http
+            - --port=8080
+            - --log-format=json
+            - --log-level=debug
+          env:
+            # Mount registry credentials for accessing private container registries
+            # The secret should contain a .dockerconfigjson with credentials for registry.redhat.io
+            - name: DOCKER_CONFIG
+              value: /etc/docker-credentials
+            # Optional: Configure container image extraction limits
+            # Uncomment and adjust if you need larger file sizes or longer timeouts
+            # - name: KUBE_COMPARE_MCP_MAX_FILE_SIZE
+            #   value: "104857600"  # Max file size in bytes (default: 100MB)
+            # - name: KUBE_COMPARE_MCP_IMAGE_PULL_TIMEOUT
+            #   value: "5m"  # Image pull timeout (default: 5 minutes)
+          volumeMounts:
+            - name: registry-credentials
+              mountPath: /etc/docker-credentials
+              readOnly: true
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: registry-credentials
+          secret:
+            # Optional: Create this secret for RDS tools that access registry.redhat.io
+            # Run: make setup-registry-credentials
+            # Or manually create with your Red Hat registry pull secret
+            secretName: registry-credentials
+            optional: true  # Allows deployment without the secret; RDS tools will fail until configured
+            items:
+              - key: .dockerconfigjson
+                path: config.json

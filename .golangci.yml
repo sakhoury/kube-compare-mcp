@@ -1,0 +1,200 @@
+# SPDX-License-Identifier: Apache-2.0
+# golangci-lint configuration (v2 format)
+# Based on openshift/kube-compare and Go best practices for MCP servers
+#
+# Run: make lint
+# Install: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+version: "2"
+
+run:
+  # Timeout for analysis
+  timeout: 5m
+  # Number of CPUs to use
+  concurrency: 6
+  # Include test files
+  tests: true
+
+output:
+  # Print linter name at the end of issue
+  print-linter-name: true
+  # Sort results by file, line, column
+  sort-order:
+    - file
+    - linter
+
+formatters:
+  enable:
+    - gofmt           # Check if code is gofmt-ed
+    - goimports       # Check imports are formatted and sorted
+  settings:
+    goimports:
+      # Put local imports after 3rd-party packages
+      local-prefixes:
+        - github.com/sakhoury/kube-compare-mcp
+
+linters:
+  # Disable default linters and enable specific ones
+  default: none
+  enable:
+    # Essential linters
+    - errcheck        # Check for unchecked errors
+    - govet           # Reports suspicious constructs
+    - staticcheck     # Advanced static analysis
+    - unused          # Find unused code
+
+    # Code quality
+    - ineffassign     # Detects ineffectual assignments
+    - unconvert       # Remove unnecessary type conversions
+    - unparam         # Report unused function parameters
+    - goconst         # Find repeated strings that could be constants
+
+    # Security
+    - gosec           # Security-oriented linting
+
+    # Style and formatting
+    - misspell        # Finds commonly misspelled English words
+    - revive          # Fast, configurable linter (replaces golint)
+
+    # Error handling
+    - errorlint       # Find code that will cause issues with error wrapping
+    - wrapcheck       # Check that errors from external packages are wrapped
+
+    # Code complexity
+    - gocyclo         # Computes cyclomatic complexity
+    - gocritic        # Opinionated Go source code linter
+
+    # Additional checks
+    - depguard        # Control which packages can be imported
+    - loggercheck     # Check for proper logger usage
+
+  settings:
+    # Cyclomatic complexity threshold
+    gocyclo:
+      min-complexity: 20
+
+    # Error check settings
+    errcheck:
+      # Check type assertions
+      check-type-assertions: true
+
+    # Revive linter settings
+    revive:
+      rules:
+        # Disable if-return rule (can be overly strict)
+        - name: if-return
+          disabled: true
+        # Error message style enforcement
+        - name: string-format
+          disabled: false
+          arguments:
+            - - 'fmt.Errorf[0]'
+              - '/^([^A-Z]|$)/'
+              - must not start with a capital letter
+            - - 'fmt.Errorf[0]'
+              - '/(^|[^\.!?])$/'
+              - must not end in punctuation
+            - - panic
+              - '/^[^\n]*$/'
+              - must not contain line breaks
+
+    # Gocritic settings - advanced checks
+    gocritic:
+      enabled-checks:
+        # Diagnostic checks
+        - commentedOutCode
+        - nilValReturn
+        - weakCond
+        - sloppyReassign
+
+        # Performance checks
+        - equalFold
+        - appendCombine
+
+        # Style checks
+        - boolExprSimplify
+        - commentedOutImport
+        - emptyFallthrough
+        - emptyStringTest
+        - unlabelStmt
+
+        # Opinionated checks
+        - nestingReduce
+        - unnecessaryBlock
+        - paramTypeCombine
+
+    # Dependency guard - control imports
+    depguard:
+      rules:
+        main:
+          list-mode: lax
+          files:
+            - $all
+          deny:
+            - pkg: "github.com/pkg/errors"
+              desc: Should be replaced by standard lib errors package
+            - pkg: "io/ioutil"
+              desc: Deprecated - use io and os packages instead
+
+    # Wrap check settings - ensure external errors are wrapped
+    wrapcheck:
+      ignore-sigs:
+        # Standard error creation
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        # Wrapping functions
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .WithStack(
+        # Project-specific error constructors
+        - NewValidationError(
+        - NewCompareError(
+        - NewSecurityError(
+
+    # Gosec security settings
+    gosec:
+      excludes:
+        # Allow hardcoded credentials in test files (test fixtures)
+        - G101
+
+    # Misspell settings
+    misspell:
+      locale: US
+
+  exclusions:
+    # Exclude some rules in test files
+    rules:
+      # Allow dot imports in test files (for Ginkgo/Gomega)
+      - path: _test\.go
+        linters:
+          - revive
+        text: "dot-imports"
+
+      # Allow unused parameters in test mocks
+      - path: _test\.go
+        linters:
+          - unparam
+
+      # Relax error wrapping requirements in tests
+      - path: _test\.go
+        linters:
+          - wrapcheck
+
+      # Allow longer functions in test files
+      - path: _test\.go
+        linters:
+          - gocyclo
+
+    # Use default exclusions
+    presets:
+      - std-error-handling
+
+issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 50
+  # Maximum count of issues with the same text
+  max-same-issues: 5
