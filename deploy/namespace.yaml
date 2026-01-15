@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-compare-mcp
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/part-of: kube-compare-mcp
