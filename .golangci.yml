@@ -16,8 +16,6 @@ run:
   tests: true
 
 output:
-  # Print linter name at the end of issue
-  print-linter-name: true
   # Sort results by file, line, column
   sort-order:
     - file
