@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Build the kube-compare-mcp binary using Red Hat UBI Go Toolset
-FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
+FROM registry.access.redhat.com/ubi9/go-toolset:9.7 AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
