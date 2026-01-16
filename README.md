@@ -433,7 +433,7 @@ Simply provide the kubeconfig content as-is:
 
 ```bash
 # Encode your kubeconfig
-cat ~/.kube/config | base64 -w 0
+base64 < ~/.kube/config    # Works on both Linux and macOS
 ```
 
 ```json
@@ -442,6 +442,61 @@ cat ~/.kube/config | base64 -w 0
   "kubeconfig": "<base64-encoded-kubeconfig>",
   "context": "my-cluster-context"
 }
+```
+
+### Minimal Kubeconfig for OLS
+
+When using this MCP server with OpenShift Lightspeed (OLS), you may encounter token and file size limits. The OLS operator restricts the amount of data it sends to MCP servers. Since full kubeconfigs often contain embedded CA certificates and multiple contexts, they can exceed these limits.
+
+Create a minimal kubeconfig using a service account token:
+
+```bash
+# Create a service account with cluster-admin access
+oc create sa rds-checker -n default
+oc adm policy add-cluster-role-to-user cluster-admin -z rds-checker -n default
+
+# Generate a token and get the API server URL
+TOKEN=$(oc create token rds-checker -n default --duration=24h)
+API_SERVER=$(oc whoami --show-server)
+
+# Create minimal kubeconfig
+cat << EOF > minimal-kubeconfig.yaml
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: ${API_SERVER}
+    insecure-skip-tls-verify: true
+  name: cluster
+contexts:
+- context:
+    cluster: cluster
+    user: user
+  name: ctx
+current-context: ctx
+users:
+- name: user
+  user:
+    token: ${TOKEN}
+EOF
+
+# Verify connectivity
+export KUBECONFIG="${PWD}/minimal-kubeconfig.yaml"
+oc whoami
+```
+
+**Why this works:**
+- **No CA certificate data** - Uses `insecure-skip-tls-verify` instead of embedding large CA bundles
+- **Single context** - Removes unnecessary clusters, contexts, and users
+- **Token-based auth** - Simple bearer token instead of complex auth mechanisms
+- **Time-limited** - Token expires in 24 hours (adjust `--duration` as needed)
+
+> **Security Note:** Using `insecure-skip-tls-verify: true` skips TLS certificate verification. This is acceptable when the MCP server runs inside the same cluster or when connecting over a trusted network. For production use across untrusted networks, consider using the CA certificate approach with a compressed kubeconfig. The `cluster-admin` role grants full cluster access; consider creating a more restrictive ClusterRole for production use.
+
+You can then provide this minimal kubeconfig content to the MCP tools directly or base64-encode it:
+
+```bash
+base64 < minimal-kubeconfig.yaml    # Works on both Linux and macOS
 ```
 
 ### Security Considerations
