@@ -45,7 +45,7 @@ flowchart TB
     end
 
     subgraph server [kube-compare-mcp Server]
-        Transport[Transport Layer<br/>stdio / sse / http]
+        Transport[Transport Layer<br/>stdio / http]
         Tools[MCP Tools]
         ClusterCompare[cluster_compare]
         FindRDS[find_rds_reference]
@@ -85,8 +85,8 @@ make build
 # Run locally with stdio transport (for local MCP clients)
 ./bin/kube-compare-mcp
 
-# Or run with SSE transport for network access
-./bin/kube-compare-mcp --transport=sse --port=8080
+# Or run with HTTP transport for network access
+./bin/kube-compare-mcp --transport=http --port=8080
 ```
 
 ## Installation
@@ -129,8 +129,8 @@ make build-all
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--transport` | Transport mode: `stdio`, `sse`, or `http` | `stdio` |
-| `--port` | Port to listen on (for `sse` and `http` transports) | `8080` |
+| `--transport` | Transport mode: `stdio` or `http` | `stdio` |
+| `--port` | Port to listen on (for `http` transport) | `8080` |
 | `--log-level` | Log level: `debug`, `info`, `warn`, `error` | `info` |
 | `--log-format` | Log format: `text`, `json` | `text` |
 | `--version` | Show version information | - |
@@ -145,22 +145,9 @@ For local MCP clients like Cursor and Claude Desktop running on the same machine
 ./bin/kube-compare-mcp --transport=stdio
 ```
 
-#### SSE (Server-Sent Events)
-
-For network access, exposing endpoints at `/sse` and `/message`:
-
-```bash
-./bin/kube-compare-mcp --transport=sse --port=8080
-```
-
-Endpoints:
-- `GET /sse` - SSE connection endpoint
-- `POST /message` - Message endpoint
-- `GET /health` - Health check endpoint
-
 #### HTTP (Streamable HTTP)
 
-For OpenShift Lightspeed (OLS) integration:
+For network access and MCP client integration (Cursor, Claude Desktop, OpenShift Lightspeed):
 
 ```bash
 ./bin/kube-compare-mcp --transport=http --port=8080
@@ -238,7 +225,7 @@ spec:
       streamableHTTP:
         url: http://kube-compare-mcp.kube-compare-mcp.svc.cluster.local:8080/mcp
         timeout: 60
-        sseReadTimeout: 30
+        sseReadTimeout: 0
         enableSSE: false
 ```
 
@@ -252,7 +239,7 @@ Configure your MCP client to connect to the server's endpoint:
 {
   "mcpServers": {
     "kube-compare": {
-      "url": "https://kube-compare-mcp-route.apps.your-cluster.example.com/sse"
+      "url": "https://kube-compare-mcp-route.apps.your-cluster.example.com/mcp"
     }
   }
 }
@@ -264,7 +251,7 @@ Configure your MCP client to connect to the server's endpoint:
 {
   "mcpServers": {
     "kube-compare": {
-      "url": "https://kube-compare-mcp-route.apps.your-cluster.example.com/sse"
+      "url": "https://kube-compare-mcp-route.apps.your-cluster.example.com/mcp"
     }
   }
 }
@@ -599,7 +586,7 @@ export KUBE_COMPARE_MCP_IMAGE_PULL_TIMEOUT=10m
 # Increase validation timeouts for slow networks
 export KUBE_COMPARE_MCP_HTTP_VALIDATION_TIMEOUT=30s
 export KUBE_COMPARE_MCP_OCI_VALIDATION_TIMEOUT=60s
-./bin/kube-compare-mcp --transport=sse --port=8080
+./bin/kube-compare-mcp --transport=http --port=8080
 ```
 
 ## Development
