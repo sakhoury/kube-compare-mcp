@@ -4,11 +4,12 @@ package mcpserver_test
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Kubeconfig fixtures for testing
@@ -134,20 +135,28 @@ func EncodeKubeconfig(kc string) string {
 }
 
 // NewMCPRequest creates an MCP CallToolRequest with the given arguments.
-func NewMCPRequest(args map[string]interface{}) mcp.CallToolRequest {
-	return mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Arguments: args,
+func NewMCPRequest(args map[string]interface{}) *mcp.CallToolRequest {
+	var rawArgs json.RawMessage
+	if args != nil {
+		rawArgs, _ = json.Marshal(args)
+	}
+	return &mcp.CallToolRequest{
+		Params: &mcp.CallToolParamsRaw{
+			Arguments: rawArgs,
 		},
 	}
 }
 
 // NewMCPRequestWithName creates an MCP CallToolRequest with tool name and arguments.
-func NewMCPRequestWithName(name string, args map[string]interface{}) mcp.CallToolRequest {
-	return mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
+func NewMCPRequestWithName(name string, args map[string]interface{}) *mcp.CallToolRequest {
+	var rawArgs json.RawMessage
+	if args != nil {
+		rawArgs, _ = json.Marshal(args)
+	}
+	return &mcp.CallToolRequest{
+		Params: &mcp.CallToolParamsRaw{
 			Name:      name,
-			Arguments: args,
+			Arguments: rawArgs,
 		},
 	}
 }

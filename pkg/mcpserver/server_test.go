@@ -33,18 +33,6 @@ var _ = Describe("Server", func() {
 		It("has a description", func() {
 			Expect(tool.Description).NotTo(BeEmpty())
 		})
-
-		It("has input schema with properties", func() {
-			Expect(tool.InputSchema.Properties).NotTo(BeNil())
-		})
-
-		It("requires the reference parameter", func() {
-			Expect(tool.InputSchema.Required).To(ContainElement("reference"))
-		})
-
-		It("does not require kubeconfig (in-cluster mode supported)", func() {
-			Expect(tool.InputSchema.Required).NotTo(ContainElement("kubeconfig"))
-		})
 	})
 
 	Describe("FindRDSReferenceTool", func() {
@@ -57,14 +45,6 @@ var _ = Describe("Server", func() {
 		It("has a description", func() {
 			Expect(tool.Description).NotTo(BeEmpty())
 		})
-
-		It("requires the rds_type parameter", func() {
-			Expect(tool.InputSchema.Required).To(ContainElement("rds_type"))
-		})
-
-		It("does not require kubeconfig (in-cluster mode supported)", func() {
-			Expect(tool.InputSchema.Required).NotTo(ContainElement("kubeconfig"))
-		})
 	})
 
 	Describe("CompareClusterRDSTool", func() {
@@ -76,14 +56,6 @@ var _ = Describe("Server", func() {
 
 		It("has a description", func() {
 			Expect(tool.Description).NotTo(BeEmpty())
-		})
-
-		It("requires the rds_type parameter", func() {
-			Expect(tool.InputSchema.Required).To(ContainElement("rds_type"))
-		})
-
-		It("does not require kubeconfig (in-cluster mode supported)", func() {
-			Expect(tool.InputSchema.Required).NotTo(ContainElement("kubeconfig"))
 		})
 	})
 

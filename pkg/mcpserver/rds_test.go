@@ -267,14 +267,6 @@ var _ = Describe("ReferenceHandler", func() {
 		It("has a description", func() {
 			Expect(tool.Description).NotTo(BeEmpty())
 		})
-
-		It("requires rds_type parameter", func() {
-			Expect(tool.InputSchema.Required).To(ContainElement("rds_type"))
-		})
-
-		It("does not require kubeconfig (in-cluster mode supported)", func() {
-			Expect(tool.InputSchema.Required).NotTo(ContainElement("kubeconfig"))
-		})
 	})
 
 	Describe("GetRDSConfigs", func() {

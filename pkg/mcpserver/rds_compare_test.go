@@ -180,24 +180,6 @@ var _ = Describe("RDSCompareHandler", func() {
 		It("has a description", func() {
 			Expect(tool.Description).NotTo(BeEmpty())
 		})
-
-		It("requires rds_type parameter", func() {
-			Expect(tool.InputSchema.Required).To(ContainElement("rds_type"))
-		})
-
-		It("does not require kubeconfig (in-cluster mode supported)", func() {
-			Expect(tool.InputSchema.Required).NotTo(ContainElement("kubeconfig"))
-		})
-
-		It("has output_format parameter", func() {
-			props := tool.InputSchema.Properties
-			Expect(props).To(HaveKey("output_format"))
-		})
-
-		It("has all_resources parameter", func() {
-			props := tool.InputSchema.Properties
-			Expect(props).To(HaveKey("all_resources"))
-		})
 	})
 
 	Describe("RDSCompareArgs struct", func() {

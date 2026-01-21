@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"k8s.io/client-go/rest"
 )
 
@@ -75,46 +75,38 @@ func NewReferenceService() *ReferenceService {
 
 var defaultReferenceService = NewReferenceService()
 
+// FindRDSReferenceInput defines the typed input for the find_rds_reference tool.
+type FindRDSReferenceInput struct {
+	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Base64-encoded kubeconfig content for connecting to the target cluster"`
+	Context    string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
+	RDSType    string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS or ran for Telco RAN DU RDS"`
+	OCPVersion string `json:"ocp_version,omitempty" jsonschema:"OpenShift version (e.g. 4.18 or 4.20.0)"`
+}
+
+// FindRDSReferenceOutput is an empty output struct (tool returns text content).
+type FindRDSReferenceOutput struct{}
+
 // FindRDSReferenceTool returns the MCP tool definition for finding RDS references.
-func FindRDSReferenceTool() mcp.Tool {
-	return mcp.NewTool(
-		"find_rds_reference",
-		mcp.WithDescription("Find the appropriate RDS (Reference Design Specification) container reference for a cluster. "+
-			"Can query a cluster via kubeconfig to auto-detect the OpenShift version, accept an explicit version, "+
-			"or use in-cluster config when running inside an OpenShift cluster (no parameters needed). "+
-			"The tool automatically selects the best available RHEL variant from the registry (preferring newer versions)."),
-		mcp.WithString(
-			"kubeconfig",
-			mcp.Description("Base64-encoded kubeconfig content for connecting to the target cluster. "+
-				"Optional: if not provided and ocp_version is not set, uses in-cluster config to connect to the local cluster. "+
-				"Note: exec-based and auth provider plugin authentication methods are not supported for security reasons."),
-		),
-		mcp.WithString(
-			"context",
-			mcp.Description("Kubernetes context name to use from the provided kubeconfig. "+
-				"If not specified, uses the current-context from the kubeconfig. Only used when kubeconfig is provided."),
-		),
-		mcp.WithString(
-			"rds_type",
-			mcp.Required(),
-			mcp.Description("RDS type to find: 'core' for Telco Core RDS or 'ran' for Telco RAN DU RDS."),
-		),
-		mcp.WithString(
-			"ocp_version",
-			mcp.Description("OpenShift version (e.g., '4.18', '4.20.0', '4.20.0-rc.1'). "+
-				"Optional: if provided, skips cluster version detection."),
-		),
-	)
+func FindRDSReferenceTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "find_rds_reference",
+		Description: "Find the appropriate RDS (Reference Design Specification) container reference for a cluster. " +
+			"Can query a cluster via kubeconfig to auto-detect the OpenShift version, accept an explicit version, " +
+			"or use in-cluster config when running inside an OpenShift cluster (no parameters needed). " +
+			"The tool automatically selects the best available RHEL variant from the registry (preferring newer versions).",
+	}
 }
 
 // HandleFindRDSReference is the MCP tool handler for the find_rds_reference tool.
-func HandleFindRDSReference(ctx context.Context, req mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
+// It uses typed input via the FindRDSReferenceInput struct.
+func HandleFindRDSReference(ctx context.Context, req *mcp.CallToolRequest, input FindRDSReferenceInput) (*mcp.CallToolResult, FindRDSReferenceOutput, error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
 
 	logger.Debug("Received tool request", "tool", "find_rds_reference")
 
+	// Handle panics
 	defer func() {
 		if r := recover(); r != nil {
 			stackTrace := string(debug.Stack())
@@ -122,27 +114,30 @@ func HandleFindRDSReference(ctx context.Context, req mcp.CallToolRequest) (resul
 				"panic", r,
 				"stackTrace", stackTrace,
 			)
-			errMsg := fmt.Sprintf("Internal error: %v\n\nThis is a bug in kube-compare-mcp. Stack trace:\n%s", r, stackTrace)
-			result = mcp.NewToolResultError(errMsg)
-			err = nil
 		}
 	}()
 
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(ErrContextCanceled)), nil
+		return newToolResultError(formatErrorForUser(ErrContextCanceled)), FindRDSReferenceOutput{}, nil
 	}
 
-	arguments, err := ExtractArguments(req)
-	if err != nil {
-		logger.Debug("Failed to extract arguments", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+	// Validate and normalize RDS type
+	rdsType := strings.ToLower(input.RDSType)
+	if rdsType != RDSTypeCore && rdsType != RDSTypeRAN {
+		err := NewValidationError("rds_type",
+			fmt.Sprintf("invalid RDS type '%s'", input.RDSType),
+			fmt.Sprintf("use '%s' or '%s'", RDSTypeCore, RDSTypeRAN))
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), FindRDSReferenceOutput{}, nil
 	}
 
-	args, err := ParseRDSReferenceArgs(arguments)
-	if err != nil {
-		logger.Debug("Failed to parse arguments", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+	// Convert typed input to RDSReferenceArgs
+	args := &RDSReferenceArgs{
+		Kubeconfig: input.Kubeconfig,
+		Context:    input.Context,
+		RDSType:    rdsType,
+		OCPVersion: input.OCPVersion,
 	}
 
 	logger.Debug("Parsed find_rds_reference arguments",
@@ -155,13 +150,13 @@ func HandleFindRDSReference(ctx context.Context, req mcp.CallToolRequest) (resul
 	resultData, err := FindRDSReferenceInternal(ctx, args)
 	if err != nil {
 		logger.Debug("Failed to find RDS reference", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+		return newToolResultError(formatErrorForUser(err)), FindRDSReferenceOutput{}, nil
 	}
 
 	jsonOutput, err := json.MarshalIndent(resultData, "", "  ")
 	if err != nil {
 		logger.Error("Failed to marshal result", "error", err)
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to format result: %v", err)), nil
+		return newToolResultError(fmt.Sprintf("Failed to format result: %v", err)), FindRDSReferenceOutput{}, nil
 	}
 
 	duration := time.Since(start)
@@ -174,7 +169,7 @@ func HandleFindRDSReference(ctx context.Context, req mcp.CallToolRequest) (resul
 		"validated", resultData.Validated,
 	)
 
-	return mcp.NewToolResultText(string(jsonOutput)), nil
+	return newToolResultText(string(jsonOutput)), FindRDSReferenceOutput{}, nil
 }
 
 // FindRDSReferenceInternal is the core logic for finding RDS references.

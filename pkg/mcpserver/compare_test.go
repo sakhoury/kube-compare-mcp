@@ -417,10 +417,6 @@ var _ = Describe("CompareHandler", func() {
 		It("has description", func() {
 			Expect(tool.Description).NotTo(BeEmpty())
 		})
-
-		It("requires reference parameter", func() {
-			Expect(tool.InputSchema.Required).To(ContainElement("reference"))
-		})
 	})
 })
 

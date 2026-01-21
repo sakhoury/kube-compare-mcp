@@ -239,7 +239,7 @@ spec:
         url: http://kube-compare-mcp.kube-compare-mcp.svc.cluster.local:8080/mcp
         timeout: 60
         sseReadTimeout: 30
-        enableSSE: true
+        enableSSE: false
 ```
 
 ### Configuration for MCP Clients
@@ -685,7 +685,7 @@ make undeploy
 
 - [kube-compare](https://github.com/openshift/kube-compare) - The upstream comparison tool
 - [kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server) - General Kubernetes MCP server
-- [mcp-go](https://github.com/mark3labs/mcp-go) - Go SDK for MCP servers
+- [go-sdk](https://github.com/modelcontextprotocol/go-sdk) - Official Go SDK for MCP
 - [OpenShift Lightspeed](https://docs.openshift.com/container-platform/latest/lightspeed/index.html) - AI-powered OpenShift assistant
 
 ## License

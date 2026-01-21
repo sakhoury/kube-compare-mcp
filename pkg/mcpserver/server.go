@@ -5,7 +5,7 @@ package mcpserver
 import (
 	"log/slog"
 
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // ServerName is the name of the MCP server.
@@ -13,7 +13,7 @@ const ServerName = "kube-compare-mcp"
 
 // NewServer creates a new MCP server with the cluster-compare tool registered.
 // The version parameter should be passed from the build-time version in main.go.
-func NewServer(version string) *server.MCPServer {
+func NewServer(version string) *mcp.Server {
 	logger := slog.Default()
 
 	logger.Debug("Creating MCP server",
@@ -21,15 +21,17 @@ func NewServer(version string) *server.MCPServer {
 		"version", version,
 	)
 
-	s := server.NewMCPServer(
-		ServerName,
-		version,
-		server.WithToolCapabilities(true),
+	s := mcp.NewServer(
+		&mcp.Implementation{
+			Name:    ServerName,
+			Version: version,
+		},
+		nil,
 	)
 
-	s.AddTool(ClusterCompareTool(), HandleClusterCompare)
-	s.AddTool(FindRDSReferenceTool(), HandleFindRDSReference)
-	s.AddTool(CompareClusterRDSTool(), HandleCompareClusterRDS)
+	mcp.AddTool(s, ClusterCompareTool(), HandleClusterCompare)
+	mcp.AddTool(s, FindRDSReferenceTool(), HandleFindRDSReference)
+	mcp.AddTool(s, CompareClusterRDSTool(), HandleCompareClusterRDS)
 
 	logger.Info("MCP server initialized",
 		"name", ServerName,
