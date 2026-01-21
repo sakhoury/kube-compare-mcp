@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/sakhoury/kube-compare-mcp/pkg/mcpserver"
 )
@@ -95,18 +95,16 @@ func initLogger(level, format string) *slog.Logger {
 }
 
 // runStdioServer starts the server using stdio transport (standard for local MCP)
-func runStdioServer(s *server.MCPServer, logger *slog.Logger) {
+func runStdioServer(s *mcp.Server, logger *slog.Logger) {
 	logger.Debug("Starting stdio transport")
-	if err := server.ServeStdio(s); err != nil {
+	if err := s.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		logger.Error("Server error", "error", err)
 		os.Exit(1)
 	}
 }
 
 // runSSEServer starts the server using SSE (Server-Sent Events) transport
-func runSSEServer(s *server.MCPServer, port int, logger *slog.Logger) {
-	sseServer := server.NewSSEServer(s)
-
+func runSSEServer(s *mcp.Server, port int, logger *slog.Logger) {
 	addr := fmt.Sprintf(":%d", port)
 	logger.Info("Starting SSE server",
 		"addr", addr,
@@ -124,8 +122,10 @@ func runSSEServer(s *server.MCPServer, port int, logger *slog.Logger) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// SSE and message endpoints handled by the MCP SSE server
-	mux.Handle("/", sseServer)
+	// SSE endpoints handled by the MCP SSE handler
+	sseHandler := mcp.NewSSEHandler(func(*http.Request) *mcp.Server { return s }, nil)
+	mux.Handle("/sse", sseHandler)
+	mux.Handle("/message", sseHandler)
 
 	// Wrap with logging middleware
 	handler := loggingMiddleware(mux, logger)
@@ -161,9 +161,7 @@ func runSSEServer(s *server.MCPServer, port int, logger *slog.Logger) {
 }
 
 // runHTTPServer starts the server using Streamable HTTP transport
-func runHTTPServer(s *server.MCPServer, port int, logger *slog.Logger) {
-	httpServer := server.NewStreamableHTTPServer(s)
-
+func runHTTPServer(s *mcp.Server, port int, logger *slog.Logger) {
 	addr := fmt.Sprintf(":%d", port)
 	logger.Info("Starting HTTP server",
 		"addr", addr,
@@ -180,8 +178,10 @@ func runHTTPServer(s *server.MCPServer, port int, logger *slog.Logger) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// MCP endpoint handled by the Streamable HTTP server
-	mux.Handle("/", httpServer)
+	// MCP endpoint handled by the Streamable HTTP handler
+	streamHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)
+	mux.Handle("/mcp", streamHandler)
+	mux.Handle("/", streamHandler)
 
 	// Wrap with logging middleware
 	handler := loggingMiddleware(mux, logger)

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // CompareClusterRDSResult is the structured response for the compare_cluster_rds tool.
@@ -21,40 +21,27 @@ type CompareClusterRDSResult struct {
 	Comparison   json.RawMessage     `json:"comparison"`
 }
 
+// CompareClusterRDSInput defines the typed input for the compare_cluster_rds tool.
+type CompareClusterRDSInput struct {
+	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content for connecting to the target cluster"`
+	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
+	RDSType      string `json:"rds_type" jsonschema:"RDS type to compare against: core for Telco Core RDS or ran for Telco RAN DU RDS"`
+	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for the comparison results: json, yaml, or junit"`
+	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
+}
+
+// CompareClusterRDSOutput is an empty output struct (tool returns text content).
+type CompareClusterRDSOutput struct{}
+
 // CompareClusterRDSTool returns the MCP tool definition for comparing a cluster against an RDS.
-func CompareClusterRDSTool() mcp.Tool {
-	return mcp.NewTool(
-		"compare_cluster_rds",
-		mcp.WithDescription("Compare a Kubernetes/OpenShift cluster against a Reference Design Specification (RDS). "+
-			"This tool automatically detects the cluster version, finds the appropriate RDS container reference, and "+
-			"performs the comparison. When running inside an OpenShift cluster, no kubeconfig is needed - it will use "+
-			"in-cluster config to compare the local cluster. Combines find_rds_reference and cluster_compare into a single operation."),
-		mcp.WithString(
-			"kubeconfig",
-			mcp.Description("Kubeconfig content for connecting to the target cluster. "+
-				"Accepts either raw YAML or base64-encoded content (auto-detected). "+
-				"Optional: if not provided, uses in-cluster config to connect to the local cluster. "+
-				"Note: exec-based and auth provider plugin authentication methods are not supported for security reasons."),
-		),
-		mcp.WithString(
-			"context",
-			mcp.Description("Kubernetes context name to use from the provided kubeconfig. "+
-				"If not specified, uses the current-context from the kubeconfig. Only used when kubeconfig is provided."),
-		),
-		mcp.WithString(
-			"rds_type",
-			mcp.Required(),
-			mcp.Description("RDS type to compare against: 'core' for Telco Core RDS or 'ran' for Telco RAN DU RDS."),
-		),
-		mcp.WithString(
-			"output_format",
-			mcp.Description("Output format for the comparison results: 'json', 'yaml', or 'junit'. Default: 'json'."),
-		),
-		mcp.WithBoolean(
-			"all_resources",
-			mcp.Description("Compare all resources of types mentioned in the reference. Default: false."),
-		),
-	)
+func CompareClusterRDSTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "compare_cluster_rds",
+		Description: "Compare a Kubernetes/OpenShift cluster against a Reference Design Specification (RDS). " +
+			"This tool automatically detects the cluster version, finds the appropriate RDS container reference, and " +
+			"performs the comparison. When running inside an OpenShift cluster, no kubeconfig is needed - it will use " +
+			"in-cluster config to compare the local cluster. Combines find_rds_reference and cluster_compare into a single operation.",
+	}
 }
 
 // RDSCompareArgs holds the parsed arguments for the compare_cluster_rds operation.
@@ -67,13 +54,15 @@ type RDSCompareArgs struct {
 }
 
 // HandleCompareClusterRDS is the MCP tool handler for the compare_cluster_rds tool.
-func HandleCompareClusterRDS(ctx context.Context, req mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
+// It uses typed input via the CompareClusterRDSInput struct.
+func HandleCompareClusterRDS(ctx context.Context, req *mcp.CallToolRequest, input CompareClusterRDSInput) (*mcp.CallToolResult, CompareClusterRDSOutput, error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
 
 	logger.Debug("Received tool request", "tool", "compare_cluster_rds")
 
+	// Handle panics
 	defer func() {
 		if r := recover(); r != nil {
 			stackTrace := string(debug.Stack())
@@ -81,48 +70,69 @@ func HandleCompareClusterRDS(ctx context.Context, req mcp.CallToolRequest) (resu
 				"panic", r,
 				"stackTrace", stackTrace,
 			)
-			errMsg := fmt.Sprintf("Internal error: %v\n\nThis is a bug in kube-compare-mcp. Stack trace:\n%s", r, stackTrace)
-			result = mcp.NewToolResultError(errMsg)
-			err = nil
 		}
 	}()
 
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(ErrContextCanceled)), nil
+		return newToolResultError(formatErrorForUser(ErrContextCanceled)), CompareClusterRDSOutput{}, nil
 	}
 
-	arguments, err := ExtractArguments(req)
-	if err != nil {
-		logger.Debug("Failed to extract arguments", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+	// Validate and normalize RDS type
+	rdsType := strings.ToLower(input.RDSType)
+	if rdsType != RDSTypeCore && rdsType != RDSTypeRAN {
+		err := NewValidationError("rds_type",
+			fmt.Sprintf("invalid RDS type '%s'", input.RDSType),
+			fmt.Sprintf("use '%s' or '%s'", RDSTypeCore, RDSTypeRAN))
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), CompareClusterRDSOutput{}, nil
 	}
 
-	args, err := ParseRDSCompareArgs(arguments)
+	// Apply defaults
+	outputFormat := input.OutputFormat
+	if outputFormat == "" {
+		outputFormat = "json"
+	}
+
+	// Validate output format
+	if err := ValidateOutputFormat(outputFormat); err != nil {
+		logger.Debug("Invalid output format", "error", err)
+		return newToolResultError(formatErrorForUser(err)), CompareClusterRDSOutput{}, nil
+	}
+
+	// Auto-detect and process kubeconfig format
+	kubeconfigData, err := DecodeOrParseKubeconfig(input.Kubeconfig)
 	if err != nil {
-		logger.Debug("Failed to parse arguments", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+		logger.Debug("Failed to parse kubeconfig", "error", err)
+		return newToolResultError(formatErrorForUser(err)), CompareClusterRDSOutput{}, nil
+	}
+
+	var kubeconfig string
+	if kubeconfigData != nil {
+		// Convert to base64 for internal storage
+		kubeconfig = base64.StdEncoding.EncodeToString(kubeconfigData)
+		logger.Debug("Kubeconfig auto-detected and processed", "size", len(kubeconfigData))
 	}
 
 	logger.Debug("Parsed compare_cluster_rds arguments",
-		"rdsType", args.RDSType,
-		"hasKubeconfig", args.Kubeconfig != "",
-		"context", args.Context,
-		"outputFormat", args.OutputFormat,
-		"allResources", args.AllResources,
+		"rdsType", rdsType,
+		"hasKubeconfig", kubeconfig != "",
+		"context", input.Context,
+		"outputFormat", outputFormat,
+		"allResources", input.AllResources,
 	)
 
 	logger.Info("Finding RDS reference for cluster")
 	rdsArgs := &RDSReferenceArgs{
-		Kubeconfig: args.Kubeconfig,
-		Context:    args.Context,
-		RDSType:    args.RDSType,
+		Kubeconfig: kubeconfig,
+		Context:    input.Context,
+		RDSType:    rdsType,
 	}
 
 	rdsResult, err := FindRDSReferenceInternal(ctx, rdsArgs)
 	if err != nil {
 		logger.Debug("Failed to find RDS reference", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+		return newToolResultError(formatErrorForUser(err)), CompareClusterRDSOutput{}, nil
 	}
 
 	logger.Info("Found RDS reference",
@@ -135,21 +145,21 @@ func HandleCompareClusterRDS(ctx context.Context, req mcp.CallToolRequest) (resu
 	logger.Info("Starting cluster comparison", "reference", rdsResult.Reference)
 	compareArgs := &CompareArgs{
 		Reference:    rdsResult.Reference,
-		OutputFormat: args.OutputFormat,
-		AllResources: args.AllResources,
-		Kubeconfig:   args.Kubeconfig,
-		Context:      args.Context,
+		OutputFormat: outputFormat,
+		AllResources: input.AllResources,
+		Kubeconfig:   kubeconfig,
+		Context:      input.Context,
 	}
 
 	if err := validateReference(ctx, compareArgs); err != nil {
 		logger.Debug("Reference validation failed", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+		return newToolResultError(formatErrorForUser(err)), CompareClusterRDSOutput{}, nil
 	}
 
 	comparisonOutput, err := RunCompare(ctx, compareArgs)
 	if err != nil {
 		logger.Debug("Comparison failed", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+		return newToolResultError(formatErrorForUser(err)), CompareClusterRDSOutput{}, nil
 	}
 
 	var comparisonJSON json.RawMessage
@@ -168,18 +178,18 @@ func HandleCompareClusterRDS(ctx context.Context, req mcp.CallToolRequest) (resu
 	jsonOutput, err := json.MarshalIndent(combinedResult, "", "  ")
 	if err != nil {
 		logger.Error("Failed to marshal result", "error", err)
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to format result: %v", err)), nil
+		return newToolResultError(fmt.Sprintf("Failed to format result: %v", err)), CompareClusterRDSOutput{}, nil
 	}
 
 	duration := time.Since(start)
 	logger.Info("RDS comparison completed",
 		"duration", duration,
-		"rdsType", args.RDSType,
+		"rdsType", rdsType,
 		"clusterVersion", rdsResult.ClusterVersion,
 		"rhelVersion", rdsResult.RHELVersion,
 	)
 
-	return mcp.NewToolResultText(string(jsonOutput)), nil
+	return newToolResultText(string(jsonOutput)), CompareClusterRDSOutput{}, nil
 }
 
 // ParseRDSCompareArgs extracts and validates arguments from the MCP request.

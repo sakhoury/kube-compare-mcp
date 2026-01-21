@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +24,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openshift/kube-compare/pkg/compare"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -39,41 +40,46 @@ const (
 	DefaultImagePullTimeout = 5 * time.Minute
 )
 
+// newToolResultText creates a successful tool result with text content.
+func newToolResultText(text string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: text},
+		},
+	}
+}
+
+// newToolResultError creates an error tool result with the given message.
+func newToolResultError(errMsg string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{
+			&mcp.TextContent{Text: errMsg},
+		},
+		IsError: true,
+	}
+}
+
+// ClusterCompareInput defines the typed input for the cluster_compare tool.
+// JSON Schema tags are used for automatic schema generation.
+type ClusterCompareInput struct {
+	Reference    string `json:"reference" jsonschema:"Reference configuration URL"`
+	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format: json, yaml, or junit"`
+	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
+	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Base64-encoded kubeconfig content for connecting to a remote cluster"`
+	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
+}
+
+// ClusterCompareOutput is an empty output struct (tool returns text content).
+type ClusterCompareOutput struct{}
+
 // ClusterCompareTool returns the MCP tool definition for cluster-compare.
-func ClusterCompareTool() mcp.Tool {
-	return mcp.NewTool(
-		"cluster_compare",
-		mcp.WithDescription("Compare Kubernetes cluster configurations against a reference configuration. "+
-			"Detects configuration drift between live cluster resources and a known-good reference template. "+
-			"References must be provided as HTTP/HTTPS URLs or OCI container image references."),
-		mcp.WithString(
-			"reference",
-			mcp.Required(),
-			mcp.Description("Reference configuration URL. Supported formats:\n"+
-				"- HTTP/HTTPS: https://example.com/path/to/metadata.yaml\n"+
-				"- OCI Image: container://quay.io/org/refs:v1.0:/path/to/metadata.yaml"),
-		),
-		mcp.WithString(
-			"output_format",
-			mcp.Description("Output format: 'json', 'yaml', or 'junit'. Default: 'json'."),
-		),
-		mcp.WithBoolean(
-			"all_resources",
-			mcp.Description("Compare all resources of types mentioned in the reference. Default: false."),
-		),
-		mcp.WithString(
-			"kubeconfig",
-			mcp.Description("Base64-encoded kubeconfig content for connecting to a remote cluster. "+
-				"If not provided, uses the server's default cluster credentials (in-cluster config or KUBECONFIG env). "+
-				"Note: exec-based and auth provider plugin authentication methods are not supported for security reasons."),
-		),
-		mcp.WithString(
-			"context",
-			mcp.Description("Kubernetes context name to use from the provided kubeconfig. "+
-				"If not specified, uses the current-context from the kubeconfig. "+
-				"Only applicable when 'kubeconfig' parameter is provided."),
-		),
-	)
+func ClusterCompareTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "cluster_compare",
+		Description: "Compare Kubernetes cluster configurations against a reference configuration. " +
+			"Detects configuration drift between live cluster resources and a known-good reference template. " +
+			"References must be provided as HTTP/HTTPS URLs or OCI container image references.",
+	}
 }
 
 // getMaxFileSize returns the maximum file size for container extraction.
@@ -141,13 +147,15 @@ func NewCompareService() *CompareService {
 var defaultCompareService = NewCompareService()
 
 // HandleClusterCompare is the MCP tool handler for the cluster_compare tool.
-func HandleClusterCompare(ctx context.Context, req mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
+// It uses typed input via the ClusterCompareInput struct.
+func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input ClusterCompareInput) (*mcp.CallToolResult, ClusterCompareOutput, error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
 
 	logger.Debug("Received tool request", "tool", "cluster_compare")
 
+	// Handle panics
 	defer func() {
 		if r := recover(); r != nil {
 			stackTrace := string(debug.Stack())
@@ -155,27 +163,41 @@ func HandleClusterCompare(ctx context.Context, req mcp.CallToolRequest) (result 
 				"panic", r,
 				"stackTrace", stackTrace,
 			)
-			errMsg := fmt.Sprintf("Internal error: %v\n\nThis is a bug in kube-compare-mcp. Stack trace:\n%s", r, stackTrace)
-			result = mcp.NewToolResultError(errMsg)
-			err = nil
 		}
 	}()
 
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(ErrContextCanceled)), nil
+		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ClusterCompareOutput{}, nil
 	}
 
-	arguments, err := ExtractArguments(req)
-	if err != nil {
-		logger.Debug("Failed to extract arguments", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+	// Convert typed input to CompareArgs
+	args := &CompareArgs{
+		Reference:    input.Reference,
+		OutputFormat: input.OutputFormat,
+		AllResources: input.AllResources,
+		Kubeconfig:   input.Kubeconfig,
+		Context:      input.Context,
 	}
 
-	args, err := ParseCompareArgs(arguments)
-	if err != nil {
-		logger.Debug("Failed to parse arguments", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+	// Apply defaults
+	if args.OutputFormat == "" {
+		args.OutputFormat = "json"
+	}
+
+	// Validate output format
+	if err := ValidateOutputFormat(args.OutputFormat); err != nil {
+		logger.Debug("Invalid output format", "error", err)
+		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
+	}
+
+	// Validate context requires kubeconfig
+	if args.Context != "" && args.Kubeconfig == "" {
+		err := NewValidationError("context",
+			"'context' parameter requires 'kubeconfig' to also be provided",
+			"Provide a base64-encoded kubeconfig along with the context name")
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
 	}
 
 	logger.Debug("Parsed compare arguments",
@@ -188,7 +210,7 @@ func HandleClusterCompare(ctx context.Context, req mcp.CallToolRequest) (result 
 
 	if err := validateReference(ctx, args); err != nil {
 		logger.Debug("Reference validation failed", "error", err)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
 	}
 
 	logger.Info("Starting cluster comparison", "reference", args.Reference)
@@ -201,7 +223,7 @@ func HandleClusterCompare(ctx context.Context, req mcp.CallToolRequest) (result 
 			"duration", duration,
 			"reference", args.Reference,
 		)
-		return mcp.NewToolResultError(formatErrorForUser(err)), nil
+		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
 	}
 
 	logger.Info("Comparison completed",
@@ -210,17 +232,20 @@ func HandleClusterCompare(ctx context.Context, req mcp.CallToolRequest) (result 
 		"outputLength", len(output),
 	)
 
-	return mcp.NewToolResultText(output), nil
+	return newToolResultText(output), ClusterCompareOutput{}, nil
 }
 
 // ExtractArguments safely extracts the arguments map from the MCP request.
-func ExtractArguments(req mcp.CallToolRequest) (map[string]interface{}, error) {
-	if req.Params.Arguments == nil {
-		return nil, NewValidationError("arguments", "no arguments provided", "provide at least the 'reference' parameter")
+// This function is maintained for backward compatibility with tests.
+// With the official SDK's typed handlers, argument extraction is automatic.
+func ExtractArguments(req *mcp.CallToolRequest) (map[string]interface{}, error) {
+	if len(req.Params.Arguments) == 0 {
+		// Return empty map for nil/empty arguments - not an error
+		return make(map[string]interface{}), nil
 	}
 
-	arguments, ok := req.Params.Arguments.(map[string]interface{})
-	if !ok {
+	var arguments map[string]interface{}
+	if err := json.Unmarshal(req.Params.Arguments, &arguments); err != nil {
 		return nil, NewValidationError("arguments", "invalid argument format", "arguments must be a JSON object")
 	}
 
