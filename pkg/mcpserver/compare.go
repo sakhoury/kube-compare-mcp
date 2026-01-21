@@ -115,7 +115,7 @@ func getImagePullTimeout() time.Duration {
 var requestIDCounter atomic.Uint64
 
 // generateRequestID creates a unique request ID for correlation logging.
-// Thread-safe for concurrent use across HTTP/SSE handlers.
+// Thread-safe for concurrent use across HTTP handlers.
 func generateRequestID() string {
 	counter := requestIDCounter.Add(1)
 	return fmt.Sprintf("%d-%05d", time.Now().Unix(), counter%100000)
