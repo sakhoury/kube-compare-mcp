@@ -84,9 +84,9 @@ func initLogger(level, format string) *slog.Logger {
 	var handler slog.Handler
 	switch strings.ToLower(format) {
 	case "json":
-		handler = slog.NewJSONHandler(os.Stdout, opts)
+		handler = slog.NewJSONHandler(os.Stderr, opts)
 	default:
-		handler = slog.NewTextHandler(os.Stdout, opts)
+		handler = slog.NewTextHandler(os.Stderr, opts)
 	}
 
 	return slog.New(handler)
