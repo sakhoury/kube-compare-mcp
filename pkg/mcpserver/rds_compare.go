@@ -41,6 +41,12 @@ func CompareClusterRDSTool() *mcp.Tool {
 			"This tool automatically detects the cluster version, finds the appropriate RDS container reference, and " +
 			"performs the comparison. When running inside an OpenShift cluster, no kubeconfig is needed - it will use " +
 			"in-cluster config to compare the local cluster. Combines find_rds_reference and cluster_compare into a single operation.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: ptrBool(false),
+			IdempotentHint:  true,
+			OpenWorldHint:   ptrBool(true),
+		},
 	}
 }
 

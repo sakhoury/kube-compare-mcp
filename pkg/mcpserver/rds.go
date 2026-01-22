@@ -94,6 +94,12 @@ func FindRDSReferenceTool() *mcp.Tool {
 			"Can query a cluster via kubeconfig to auto-detect the OpenShift version, accept an explicit version, " +
 			"or use in-cluster config when running inside an OpenShift cluster (no parameters needed). " +
 			"The tool automatically selects the best available RHEL variant from the registry (preferring newer versions).",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: ptrBool(false),
+			IdempotentHint:  true,
+			OpenWorldHint:   ptrBool(true),
+		},
 	}
 }
 
