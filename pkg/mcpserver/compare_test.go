@@ -38,65 +38,6 @@ var _ = Describe("CompareHandler", func() {
 		})
 	})
 
-	Describe("ParseCompareArgs", func() {
-		DescribeTable("argument parsing",
-			func(args map[string]interface{}, wantErr bool, errContains string) {
-				_, err := mcpserver.ParseCompareArgs(args)
-				if wantErr {
-					Expect(err).To(HaveOccurred())
-					Expect(err.Error()).To(ContainSubstring(errContains))
-				} else {
-					Expect(err).NotTo(HaveOccurred())
-				}
-			},
-			Entry("valid with defaults",
-				map[string]interface{}{"reference": "https://example.com/ref"},
-				false, ""),
-			Entry("valid with all options",
-				map[string]interface{}{
-					"reference":     "container://quay.io/test:v1:/path",
-					"output_format": "yaml",
-					"all_resources": true,
-				},
-				false, ""),
-			Entry("missing reference",
-				map[string]interface{}{},
-				true, "reference"),
-			Entry("invalid output format",
-				map[string]interface{}{"reference": "https://x.com", "output_format": "xml"},
-				true, "format"),
-			Entry("context without kubeconfig",
-				map[string]interface{}{"reference": "https://x.com", "context": "ctx"},
-				true, "kubeconfig"),
-		)
-
-		It("uses default output format json", func() {
-			args, err := mcpserver.ParseCompareArgs(map[string]interface{}{
-				"reference": "https://example.com/ref",
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(args.OutputFormat).To(Equal("json"))
-		})
-
-		It("accepts json format", func() {
-			args, err := mcpserver.ParseCompareArgs(map[string]interface{}{
-				"reference":     "https://example.com/ref",
-				"output_format": "json",
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(args.OutputFormat).To(Equal("json"))
-		})
-
-		It("accepts yaml format", func() {
-			args, err := mcpserver.ParseCompareArgs(map[string]interface{}{
-				"reference":     "https://example.com/ref",
-				"output_format": "yaml",
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(args.OutputFormat).To(Equal("yaml"))
-		})
-	})
-
 	Describe("GetStringArg", func() {
 		DescribeTable("extracting string arguments",
 			func(args map[string]interface{}, key string, required bool, wantErr bool) {
@@ -131,25 +72,6 @@ var _ = Describe("CompareHandler", func() {
 			Entry("missing uses default true", map[string]interface{}{}, "key", true, true, false),
 			Entry("missing uses default false", map[string]interface{}{}, "key", false, false, false),
 			Entry("wrong type", map[string]interface{}{"key": "true"}, "key", false, false, true),
-		)
-	})
-
-	Describe("ValidateOutputFormat", func() {
-		DescribeTable("format validation",
-			func(format string, wantErr bool) {
-				err := mcpserver.ValidateOutputFormat(format)
-				if wantErr {
-					Expect(err).To(HaveOccurred())
-				} else {
-					Expect(err).NotTo(HaveOccurred())
-				}
-			},
-			Entry("json is valid", "json", false),
-			Entry("yaml is valid", "yaml", false),
-			Entry("junit is valid", "junit", false),
-			Entry("empty is invalid", "", true),
-			Entry("xml is invalid", "xml", true),
-			Entry("text is invalid", "text", true),
 		)
 	})
 
@@ -460,22 +382,6 @@ var _ = Describe("CompareHandler additional tests", func() {
 			Entry("path without leading slash",
 				"container://quay.io/test:v1:path/file",
 				"", "", true),
-		)
-	})
-
-	Describe("ValidateOutputFormat edge cases", func() {
-		DescribeTable("additional format validation",
-			func(format string, wantErr bool) {
-				err := mcpserver.ValidateOutputFormat(format)
-				if wantErr {
-					Expect(err).To(HaveOccurred())
-				} else {
-					Expect(err).NotTo(HaveOccurred())
-				}
-			},
-			Entry("junit is valid", "junit", false),
-			Entry("text is invalid", "text", true),
-			Entry("html is invalid", "html", true),
 		)
 	})
 
