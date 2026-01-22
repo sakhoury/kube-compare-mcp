@@ -72,6 +72,11 @@ type ClusterCompareInput struct {
 // ClusterCompareOutput is an empty output struct (tool returns text content).
 type ClusterCompareOutput struct{}
 
+// ptrBool returns a pointer to a bool value, used for optional annotation fields.
+func ptrBool(b bool) *bool {
+	return &b
+}
+
 // ClusterCompareTool returns the MCP tool definition for cluster-compare.
 func ClusterCompareTool() *mcp.Tool {
 	return &mcp.Tool{
@@ -79,6 +84,12 @@ func ClusterCompareTool() *mcp.Tool {
 		Description: "Compare Kubernetes cluster configurations against a reference configuration. " +
 			"Detects configuration drift between live cluster resources and a known-good reference template. " +
 			"References must be provided as HTTP/HTTPS URLs or OCI container image references.",
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: ptrBool(false),
+			IdempotentHint:  true,
+			OpenWorldHint:   ptrBool(true),
+		},
 	}
 }
 
