@@ -63,7 +63,7 @@ func newToolResultError(errMsg string) *mcp.CallToolResult {
 // JSON Schema tags are used for automatic schema generation.
 type ClusterCompareInput struct {
 	Reference    string `json:"reference" jsonschema:"Reference configuration URL"`
-	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format: json, yaml, or junit"`
+	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for comparison results"`
 	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
 	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Base64-encoded kubeconfig content for connecting to a remote cluster"`
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
@@ -84,6 +84,7 @@ func ClusterCompareTool() *mcp.Tool {
 		Description: "Compare Kubernetes cluster configurations against a reference configuration. " +
 			"Detects configuration drift between live cluster resources and a known-good reference template. " +
 			"References must be provided as HTTP/HTTPS URLs or OCI container image references.",
+		InputSchema: ClusterCompareInputSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
 			DestructiveHint: ptrBool(false),
@@ -191,17 +192,6 @@ func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input C
 		Context:      input.Context,
 	}
 
-	// Apply defaults
-	if args.OutputFormat == "" {
-		args.OutputFormat = "json"
-	}
-
-	// Validate output format
-	if err := ValidateOutputFormat(args.OutputFormat); err != nil {
-		logger.Debug("Invalid output format", "error", err)
-		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
-	}
-
 	// Validate context requires kubeconfig
 	if args.Context != "" && args.Kubeconfig == "" {
 		err := NewValidationError("context",
@@ -270,105 +260,6 @@ type CompareArgs struct {
 	AllResources bool
 	Kubeconfig   string // Base64-encoded kubeconfig content (optional)
 	Context      string // Kubernetes context name to use (optional)
-}
-
-// ParseCompareArgs extracts and validates arguments from the MCP request.
-func ParseCompareArgs(arguments map[string]interface{}) (*CompareArgs, error) {
-	args := &CompareArgs{
-		OutputFormat: "json",
-	}
-
-	ref, err := GetStringArg(arguments, "reference", true)
-	if err != nil {
-		return nil, err
-	}
-	args.Reference = ref
-
-	if format, err := GetStringArg(arguments, "output_format", false); err != nil {
-		return nil, err
-	} else if format != "" {
-		if err := ValidateOutputFormat(format); err != nil {
-			return nil, err
-		}
-		args.OutputFormat = format
-	}
-
-	if allRes, err := GetBoolArg(arguments, "all_resources", false); err != nil {
-		return nil, err
-	} else {
-		args.AllResources = allRes
-	}
-
-	if kubeconfig, err := GetStringArg(arguments, "kubeconfig", false); err != nil {
-		return nil, err
-	} else {
-		args.Kubeconfig = kubeconfig
-	}
-
-	if context, err := GetStringArg(arguments, "context", false); err != nil {
-		return nil, err
-	} else {
-		args.Context = context
-	}
-
-	// context without kubeconfig doesn't make sense
-	if args.Context != "" && args.Kubeconfig == "" {
-		return nil, NewValidationError("context",
-			"'context' parameter requires 'kubeconfig' to also be provided",
-			"Provide a base64-encoded kubeconfig along with the context name")
-	}
-
-	return args, nil
-}
-
-// GetStringArg safely extracts a string argument with proper type checking.
-func GetStringArg(args map[string]interface{}, key string, required bool) (string, error) {
-	val, exists := args[key]
-	if !exists || val == nil {
-		if required {
-			return "", NewValidationError(key, "required parameter is missing", fmt.Sprintf("provide the '%s' parameter", key))
-		}
-		return "", nil
-	}
-
-	str, ok := val.(string)
-	if !ok {
-		return "", NewValidationError(key, fmt.Sprintf("expected string but got %T", val), "provide a string value")
-	}
-
-	if required && strings.TrimSpace(str) == "" {
-		return "", NewValidationError(key, "required parameter is empty", fmt.Sprintf("provide a non-empty value for '%s'", key))
-	}
-
-	return strings.TrimSpace(str), nil
-}
-
-// GetBoolArg safely extracts a boolean argument with proper type checking.
-func GetBoolArg(args map[string]interface{}, key string, defaultVal bool) (bool, error) {
-	val, exists := args[key]
-	if !exists || val == nil {
-		return defaultVal, nil
-	}
-
-	b, ok := val.(bool)
-	if !ok {
-		return defaultVal, NewValidationError(key, fmt.Sprintf("expected boolean but got %T", val), "provide true or false")
-	}
-
-	return b, nil
-}
-
-// ValidateOutputFormat checks if the output format is valid.
-func ValidateOutputFormat(format string) error {
-	validFormats := []string{"json", "yaml", "junit"}
-	for _, valid := range validFormats {
-		if format == valid {
-			return nil
-		}
-	}
-	return NewValidationError("output_format",
-		fmt.Sprintf("invalid format '%s'", format),
-		fmt.Sprintf("use one of: %s", strings.Join(validFormats, ", ")))
 }
 
 // validateReference validates the reference configuration path/URL.

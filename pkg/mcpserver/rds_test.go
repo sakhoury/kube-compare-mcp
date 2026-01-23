@@ -281,57 +281,6 @@ var _ = Describe("ReferenceHandler", func() {
 		})
 	})
 
-	Describe("ParseRDSReferenceArgs", func() {
-		DescribeTable("valid arguments",
-			func(args map[string]interface{}, expectedType string) {
-				result, err := mcpserver.ParseRDSReferenceArgs(args)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(result.RDSType).To(Equal(expectedType))
-			},
-			Entry("core RDS type",
-				map[string]interface{}{"rds_type": "core"},
-				"core"),
-			Entry("ran RDS type",
-				map[string]interface{}{"rds_type": "ran"},
-				"ran"),
-			Entry("core RDS case insensitive",
-				map[string]interface{}{"rds_type": "CORE"},
-				"core"),
-			Entry("ran RDS case insensitive",
-				map[string]interface{}{"rds_type": "RAN"},
-				"ran"),
-			Entry("with kubeconfig",
-				map[string]interface{}{
-					"rds_type":   "core",
-					"kubeconfig": EncodeKubeconfig(ValidKubeconfig),
-				},
-				"core"),
-			Entry("with ocp_version",
-				map[string]interface{}{
-					"rds_type":    "core",
-					"ocp_version": "4.18.0",
-				},
-				"core"),
-		)
-
-		DescribeTable("error cases",
-			func(args map[string]interface{}, errContains string) {
-				_, err := mcpserver.ParseRDSReferenceArgs(args)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring(errContains))
-			},
-			Entry("missing rds_type",
-				map[string]interface{}{},
-				"rds_type"),
-			Entry("invalid rds_type",
-				map[string]interface{}{"rds_type": "invalid"},
-				"invalid"),
-			Entry("rds_type wrong type",
-				map[string]interface{}{"rds_type": 123},
-				"rds_type"),
-		)
-	})
-
 	Describe("RDSReferenceArgs struct", func() {
 		It("can be created with all fields", func() {
 			args := mcpserver.RDSReferenceArgs{

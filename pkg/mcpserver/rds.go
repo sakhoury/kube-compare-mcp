@@ -94,6 +94,7 @@ func FindRDSReferenceTool() *mcp.Tool {
 			"Can query a cluster via kubeconfig to auto-detect the OpenShift version, accept an explicit version, " +
 			"or use in-cluster config when running inside an OpenShift cluster (no parameters needed). " +
 			"The tool automatically selects the best available RHEL variant from the registry (preferring newer versions).",
+		InputSchema: FindRDSReferenceInputSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
 			DestructiveHint: ptrBool(false),
@@ -128,21 +129,12 @@ func HandleFindRDSReference(ctx context.Context, req *mcp.CallToolRequest, input
 		return newToolResultError(formatErrorForUser(ErrContextCanceled)), FindRDSReferenceOutput{}, nil
 	}
 
-	// Validate and normalize RDS type
-	rdsType := strings.ToLower(input.RDSType)
-	if rdsType != RDSTypeCore && rdsType != RDSTypeRAN {
-		err := NewValidationError("rds_type",
-			fmt.Sprintf("invalid RDS type '%s'", input.RDSType),
-			fmt.Sprintf("use '%s' or '%s'", RDSTypeCore, RDSTypeRAN))
-		logger.Debug("Validation failed", "error", err)
-		return newToolResultError(formatErrorForUser(err)), FindRDSReferenceOutput{}, nil
-	}
-
 	// Convert typed input to RDSReferenceArgs
+	// Note: SDK validates enum constraint, so RDSType is already lowercase ("core" or "ran")
 	args := &RDSReferenceArgs{
 		Kubeconfig: input.Kubeconfig,
 		Context:    input.Context,
-		RDSType:    rdsType,
+		RDSType:    input.RDSType,
 		OCPVersion: input.OCPVersion,
 	}
 
@@ -339,53 +331,6 @@ type RDSReferenceArgs struct {
 	Context    string
 	RDSType    string
 	OCPVersion string // Optional: explicit OpenShift version
-}
-
-// ParseRDSReferenceArgs extracts and validates arguments from the MCP request.
-func ParseRDSReferenceArgs(arguments map[string]interface{}) (*RDSReferenceArgs, error) {
-	args := &RDSReferenceArgs{}
-
-	kubeconfig, err := GetStringArg(arguments, "kubeconfig", false)
-	if err != nil {
-		return nil, err
-	}
-	args.Kubeconfig = kubeconfig
-
-	if context, err := GetStringArg(arguments, "context", false); err != nil {
-		return nil, err
-	} else {
-		args.Context = context
-	}
-
-	rdsType, err := GetStringArg(arguments, "rds_type", true)
-	if err != nil {
-		return nil, err
-	}
-
-	rdsType = strings.ToLower(rdsType)
-	if rdsType != RDSTypeCore && rdsType != RDSTypeRAN {
-		return nil, NewValidationError("rds_type",
-			fmt.Sprintf("invalid RDS type '%s'", rdsType),
-			fmt.Sprintf("use '%s' or '%s'", RDSTypeCore, RDSTypeRAN))
-	}
-	args.RDSType = rdsType
-
-	if ocpVersion, err := GetStringArg(arguments, "ocp_version", false); err != nil {
-		return nil, err
-	} else {
-		args.OCPVersion = ocpVersion
-	}
-
-	hasKubeconfig := args.Kubeconfig != ""
-	hasOCPVersion := args.OCPVersion != ""
-
-	if hasKubeconfig && hasOCPVersion {
-		slog.Default().Debug("Both kubeconfig and explicit ocp_version provided, explicit version will take precedence")
-	} else if !hasKubeconfig && !hasOCPVersion {
-		slog.Default().Debug("No kubeconfig or ocp_version provided, will use in-cluster config")
-	}
-
-	return args, nil
 }
 
 // ExtractMajorMinorVersion extracts the major.minor version from a full version string.
