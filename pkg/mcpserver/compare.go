@@ -262,43 +262,6 @@ type CompareArgs struct {
 	Context      string // Kubernetes context name to use (optional)
 }
 
-// GetStringArg safely extracts a string argument with proper type checking.
-func GetStringArg(args map[string]interface{}, key string, required bool) (string, error) {
-	val, exists := args[key]
-	if !exists || val == nil {
-		if required {
-			return "", NewValidationError(key, "required parameter is missing", fmt.Sprintf("provide the '%s' parameter", key))
-		}
-		return "", nil
-	}
-
-	str, ok := val.(string)
-	if !ok {
-		return "", NewValidationError(key, fmt.Sprintf("expected string but got %T", val), "provide a string value")
-	}
-
-	if required && strings.TrimSpace(str) == "" {
-		return "", NewValidationError(key, "required parameter is empty", fmt.Sprintf("provide a non-empty value for '%s'", key))
-	}
-
-	return strings.TrimSpace(str), nil
-}
-
-// GetBoolArg safely extracts a boolean argument with proper type checking.
-func GetBoolArg(args map[string]interface{}, key string, defaultVal bool) (bool, error) {
-	val, exists := args[key]
-	if !exists || val == nil {
-		return defaultVal, nil
-	}
-
-	b, ok := val.(bool)
-	if !ok {
-		return defaultVal, NewValidationError(key, fmt.Sprintf("expected boolean but got %T", val), "provide true or false")
-	}
-
-	return b, nil
-}
-
 // validateReference validates the reference configuration path/URL.
 func validateReference(ctx context.Context, args *CompareArgs) error {
 	refType := ClassifyReference(args.Reference)

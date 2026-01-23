@@ -38,43 +38,6 @@ var _ = Describe("CompareHandler", func() {
 		})
 	})
 
-	Describe("GetStringArg", func() {
-		DescribeTable("extracting string arguments",
-			func(args map[string]interface{}, key string, required bool, wantErr bool) {
-				_, err := mcpserver.GetStringArg(args, key, required)
-				if wantErr {
-					Expect(err).To(HaveOccurred())
-				} else {
-					Expect(err).NotTo(HaveOccurred())
-				}
-			},
-			Entry("required present", map[string]interface{}{"key": "value"}, "key", true, false),
-			Entry("required missing", map[string]interface{}{}, "key", true, true),
-			Entry("optional present", map[string]interface{}{"key": "value"}, "key", false, false),
-			Entry("optional missing", map[string]interface{}{}, "key", false, false),
-			Entry("wrong type", map[string]interface{}{"key": 123}, "key", true, true),
-		)
-	})
-
-	Describe("GetBoolArg", func() {
-		DescribeTable("extracting boolean arguments",
-			func(args map[string]interface{}, key string, defaultVal, expected bool, wantErr bool) {
-				val, err := mcpserver.GetBoolArg(args, key, defaultVal)
-				if wantErr {
-					Expect(err).To(HaveOccurred())
-				} else {
-					Expect(err).NotTo(HaveOccurred())
-					Expect(val).To(Equal(expected))
-				}
-			},
-			Entry("true", map[string]interface{}{"key": true}, "key", false, true, false),
-			Entry("false", map[string]interface{}{"key": false}, "key", true, false, false),
-			Entry("missing uses default true", map[string]interface{}{}, "key", true, true, false),
-			Entry("missing uses default false", map[string]interface{}{}, "key", false, false, false),
-			Entry("wrong type", map[string]interface{}{"key": "true"}, "key", false, false, true),
-		)
-	})
-
 	Describe("ClassifyReference", func() {
 		DescribeTable("reference classification",
 			func(ref string, expected mcpserver.ReferenceType) {
@@ -383,16 +346,6 @@ var _ = Describe("CompareHandler additional tests", func() {
 				"container://quay.io/test:v1:path/file",
 				"", "", true),
 		)
-	})
-
-	Describe("GetStringArg edge cases", func() {
-		It("trims whitespace from string values", func() {
-			args := map[string]interface{}{"key": "  value  "}
-			val, err := mcpserver.GetStringArg(args, "key", true)
-			Expect(err).NotTo(HaveOccurred())
-			// GetStringArg trims whitespace
-			Expect(val).To(Equal("value"))
-		})
 	})
 
 	Describe("ProcessCompareResult additional tests", func() {

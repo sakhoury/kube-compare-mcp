@@ -129,14 +129,12 @@ func HandleFindRDSReference(ctx context.Context, req *mcp.CallToolRequest, input
 		return newToolResultError(formatErrorForUser(ErrContextCanceled)), FindRDSReferenceOutput{}, nil
 	}
 
-	// Normalize RDS type (SDK validates enum constraint)
-	rdsType := strings.ToLower(input.RDSType)
-
 	// Convert typed input to RDSReferenceArgs
+	// Note: SDK validates enum constraint, so RDSType is already lowercase ("core" or "ran")
 	args := &RDSReferenceArgs{
 		Kubeconfig: input.Kubeconfig,
 		Context:    input.Context,
-		RDSType:    rdsType,
+		RDSType:    input.RDSType,
 		OCPVersion: input.OCPVersion,
 	}
 

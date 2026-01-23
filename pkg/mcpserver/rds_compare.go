@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -85,8 +84,7 @@ func HandleCompareClusterRDS(ctx context.Context, req *mcp.CallToolRequest, inpu
 		return newToolResultError(formatErrorForUser(ErrContextCanceled)), CompareClusterRDSOutput{}, nil
 	}
 
-	// Normalize RDS type (SDK validates enum constraint)
-	rdsType := strings.ToLower(input.RDSType)
+	// Note: SDK validates enum constraint, so RDSType is already lowercase ("core" or "ran")
 
 	// Auto-detect and process kubeconfig format
 	kubeconfigData, err := DecodeOrParseKubeconfig(input.Kubeconfig)
@@ -103,10 +101,10 @@ func HandleCompareClusterRDS(ctx context.Context, req *mcp.CallToolRequest, inpu
 	}
 
 	logger.Debug("Parsed compare_cluster_rds arguments",
-		"rdsType", rdsType,
+		"rdsType", input.RDSType,
 		"hasKubeconfig", kubeconfig != "",
 		"context", input.Context,
-		"input.OutputFormat", input.OutputFormat,
+		"outputFormat", input.OutputFormat,
 		"allResources", input.AllResources,
 	)
 
@@ -114,7 +112,7 @@ func HandleCompareClusterRDS(ctx context.Context, req *mcp.CallToolRequest, inpu
 	rdsArgs := &RDSReferenceArgs{
 		Kubeconfig: kubeconfig,
 		Context:    input.Context,
-		RDSType:    rdsType,
+		RDSType:    input.RDSType,
 	}
 
 	rdsResult, err := FindRDSReferenceInternal(ctx, rdsArgs)
@@ -172,7 +170,7 @@ func HandleCompareClusterRDS(ctx context.Context, req *mcp.CallToolRequest, inpu
 	duration := time.Since(start)
 	logger.Info("RDS comparison completed",
 		"duration", duration,
-		"rdsType", rdsType,
+		"rdsType", input.RDSType,
 		"clusterVersion", rdsResult.ClusterVersion,
 		"rhelVersion", rdsResult.RHELVersion,
 	)
