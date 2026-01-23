@@ -10,11 +10,14 @@ import (
 
 // ClusterCompareInputSchema returns the JSON schema for ClusterCompareInput
 // with proper enum constraints for output_format.
+//
+// Note: These schema functions are called during NewServer() initialization,
+// before the server accepts any connections. A panic here fails fast at startup,
+// which is the correct behavior for schema generation errors.
 func ClusterCompareInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[ClusterCompareInput](nil)
 	if err != nil {
-		// This should never happen with a valid struct
-		panic(err)
+		panic(err) // Fails at startup, not during request handling
 	}
 
 	// Add enum constraint for output_format
@@ -31,8 +34,7 @@ func ClusterCompareInputSchema() *jsonschema.Schema {
 func FindRDSReferenceInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[FindRDSReferenceInput](nil)
 	if err != nil {
-		// This should never happen with a valid struct
-		panic(err)
+		panic(err) // Fails at startup, not during request handling
 	}
 
 	// Add enum constraint for rds_type
@@ -48,8 +50,7 @@ func FindRDSReferenceInputSchema() *jsonschema.Schema {
 func CompareClusterRDSInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[CompareClusterRDSInput](nil)
 	if err != nil {
-		// This should never happen with a valid struct
-		panic(err)
+		panic(err) // Fails at startup, not during request handling
 	}
 
 	// Add enum constraint for rds_type
