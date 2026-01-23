@@ -119,7 +119,7 @@ var _ = Describe("ReferenceHandler", func() {
 		})
 	})
 
-	Describe("ReferenceService.FindRDSReference", func() {
+	Describe("ReferenceService.ResolveRDS", func() {
 		var (
 			ctrl         *gomock.Controller
 			mockRegistry *MockRegistryClient
@@ -155,12 +155,12 @@ var _ = Describe("ReferenceHandler", func() {
 					Return(nil).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    mcpserver.RDSTypeCore,
 					OCPVersion: "4.18.0",
 				}
 
-				result, err := service.FindRDSReference(context.Background(), args)
+				result, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.ClusterVersion).To(Equal("4.18.0"))
 				Expect(result.Reference).To(ContainSubstring("v4.18"))
@@ -186,12 +186,12 @@ var _ = Describe("ReferenceHandler", func() {
 					Return(nil).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    mcpserver.RDSTypeCore,
 					Kubeconfig: EncodeKubeconfig(ValidKubeconfig),
 				}
 
-				result, err := service.FindRDSReference(context.Background(), args)
+				result, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(result.ClusterVersion).To(Equal("4.20.0-rc.1"))
 				Expect(result.Reference).To(ContainSubstring("v4.20"))
@@ -205,12 +205,12 @@ var _ = Describe("ReferenceHandler", func() {
 					Return([]string{"v4.16", "v4.17", "v4.18"}, nil).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    mcpserver.RDSTypeCore,
 					OCPVersion: "4.25.0",
 				}
 
-				_, err := service.FindRDSReference(context.Background(), args)
+				_, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("not found"))
 			})
@@ -223,12 +223,12 @@ var _ = Describe("ReferenceHandler", func() {
 					Return(nil, errors.New("UNAUTHORIZED")).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    mcpserver.RDSTypeCore,
 					OCPVersion: "4.18.0",
 				}
 
-				_, err := service.FindRDSReference(context.Background(), args)
+				_, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("authentication"))
 			})
@@ -245,23 +245,23 @@ var _ = Describe("ReferenceHandler", func() {
 					Return(errors.New("image not accessible")).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    mcpserver.RDSTypeCore,
 					OCPVersion: "4.18.0",
 				}
 
-				_, err := service.FindRDSReference(context.Background(), args)
+				_, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("accessible"))
 			})
 		})
 	})
 
-	Describe("FindRDSReferenceTool", func() {
-		var tool = mcpserver.FindRDSReferenceTool()
+	Describe("ResolveRDSTool", func() {
+		var tool = mcpserver.ResolveRDSTool()
 
 		It("has the correct name", func() {
-			Expect(tool.Name).To(Equal("find_rds_reference"))
+			Expect(tool.Name).To(Equal("kube_compare_resolve_rds"))
 		})
 
 		It("has a description", func() {
@@ -281,9 +281,9 @@ var _ = Describe("ReferenceHandler", func() {
 		})
 	})
 
-	Describe("RDSReferenceArgs struct", func() {
+	Describe("ResolveRDSArgs struct", func() {
 		It("can be created with all fields", func() {
-			args := mcpserver.RDSReferenceArgs{
+			args := mcpserver.ResolveRDSArgs{
 				Kubeconfig: "base64data",
 				Context:    "my-context",
 				RDSType:    "core",
@@ -321,11 +321,11 @@ var _ = Describe("ReferenceHandler", func() {
 					Return(nil, errors.New("UNAUTHORIZED: access denied")).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    "core",
 					OCPVersion: "4.18.0",
 				}
-				_, err := service.FindRDSReference(context.Background(), args)
+				_, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("authentication"))
 			})
@@ -343,11 +343,11 @@ var _ = Describe("ReferenceHandler", func() {
 					Return(nil, errors.New("NAME_UNKNOWN: repo not found")).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    "core",
 					OCPVersion: "4.18.0",
 				}
-				_, err := service.FindRDSReference(context.Background(), args)
+				_, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).To(HaveOccurred())
 			})
 
@@ -364,17 +364,17 @@ var _ = Describe("ReferenceHandler", func() {
 					Return(nil, errors.New("connection timeout")).
 					AnyTimes()
 
-				args := &mcpserver.RDSReferenceArgs{
+				args := &mcpserver.ResolveRDSArgs{
 					RDSType:    "core",
 					OCPVersion: "4.18.0",
 				}
-				_, err := service.FindRDSReference(context.Background(), args)
+				_, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).To(HaveOccurred())
 			})
 		})
 	})
 
-	Describe("FindRDSReference with cluster version detection", func() {
+	Describe("ResolveRDS with cluster version detection", func() {
 		var ctrl *gomock.Controller
 
 		BeforeEach(func() {
@@ -409,11 +409,11 @@ var _ = Describe("ReferenceHandler", func() {
 				Return(nil).
 				AnyTimes()
 
-			args := &mcpserver.RDSReferenceArgs{
+			args := &mcpserver.ResolveRDSArgs{
 				RDSType:    "core",
 				Kubeconfig: EncodeKubeconfig(ValidKubeconfig),
 			}
-			result, err := service.FindRDSReference(context.Background(), args)
+			result, err := service.ResolveRDS(context.Background(), args)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result.ClusterVersion).To(Equal("4.19.0"))
 			Expect(result.Reference).To(ContainSubstring("v4.19"))

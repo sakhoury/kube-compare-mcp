@@ -292,11 +292,11 @@ var _ = Describe("CompareHandler", func() {
 		})
 	})
 
-	Describe("ClusterCompareTool", func() {
-		var tool = mcpserver.ClusterCompareTool()
+	Describe("DiffTool", func() {
+		var tool = mcpserver.DiffTool()
 
 		It("has correct name", func() {
-			Expect(tool.Name).To(Equal("cluster_compare"))
+			Expect(tool.Name).To(Equal("kube_compare_diff"))
 		})
 
 		It("has description", func() {

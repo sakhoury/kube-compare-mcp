@@ -11,9 +11,9 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
 - [Running the Server](#running-the-server)
 - [Deployment](#deployment)
 - [MCP Tools Reference](#mcp-tools-reference)
-  - [cluster_compare](#cluster_compare)
-  - [find_rds_reference](#find_rds_reference)
-  - [compare_cluster_rds](#compare_cluster_rds)
+  - [kube_compare_diff](#kube_compare_diff)
+  - [kube_compare_resolve_rds](#kube_compare_resolve_rds)
+  - [kube_compare_validate_rds](#kube_compare_validate_rds)
 - [RDS Support](#rds-reference-design-specification-support)
 - [Connecting to Remote Clusters](#connecting-to-remote-clusters)
 - [Reference Configuration Formats](#reference-configuration-formats)
@@ -47,9 +47,9 @@ flowchart TB
     subgraph server [kube-compare-mcp Server]
         Transport[Transport Layer<br/>stdio / http]
         Tools[MCP Tools]
-        ClusterCompare[cluster_compare]
-        FindRDS[find_rds_reference]
-        CompareRDS[compare_cluster_rds]
+        Diff[kube_compare_diff]
+        ResolveRDS[kube_compare_resolve_rds]
+        ValidateRDS[kube_compare_validate_rds]
     end
 
     subgraph external [External Resources]
@@ -62,16 +62,16 @@ flowchart TB
     Claude --> Transport
     OLS --> Transport
     Transport --> Tools
-    Tools --> ClusterCompare
-    Tools --> FindRDS
-    Tools --> CompareRDS
-    ClusterCompare --> K8sCluster
-    ClusterCompare --> Registry
-    ClusterCompare --> HTTPRef
-    FindRDS --> K8sCluster
-    FindRDS --> Registry
-    CompareRDS --> ClusterCompare
-    CompareRDS --> FindRDS
+    Tools --> Diff
+    Tools --> ResolveRDS
+    Tools --> ValidateRDS
+    Diff --> K8sCluster
+    Diff --> Registry
+    Diff --> HTTPRef
+    ResolveRDS --> K8sCluster
+    ResolveRDS --> Registry
+    ValidateRDS --> Diff
+    ValidateRDS --> ResolveRDS
 ```
 
 ## Quick Start
@@ -185,7 +185,7 @@ make docker-build docker-push deploy setup-registry-credentials IMG=quay.io/myus
 
 ### Registry Credentials (Required for RDS)
 
-If using the RDS tools (`find_rds_reference` or `compare_cluster_rds`), you need to provide credentials for `registry.redhat.io`.
+If using the RDS tools (`kube_compare_resolve_rds` or `kube_compare_validate_rds`), you need to provide credentials for `registry.redhat.io`.
 
 **On OpenShift (recommended):** Use the Makefile target to copy the existing cluster pull-secret:
 
@@ -274,9 +274,9 @@ Configure your MCP client to connect to the server's endpoint:
 
 The server exposes three MCP tools:
 
-### cluster_compare
+### kube_compare_diff
 
-Compare a Kubernetes cluster against a reference configuration.
+Detect configuration drift between a Kubernetes/OpenShift cluster and a reference design.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -296,9 +296,9 @@ Compare my Kubernetes cluster against the reference configuration at https://exa
 Run kube-compare on my cluster using reference container://quay.io/openshift-kni/telco-core-rds-rhel9:v4.18:/metadata.yaml
 ```
 
-### find_rds_reference
+### kube_compare_resolve_rds
 
-Find the appropriate Red Hat Telco RDS (Reference Design Specification) container reference for a cluster.
+Get the correct Red Hat Telco RDS container reference for a cluster's OpenShift version.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -330,9 +330,9 @@ Find the Telco Core RDS reference for my OpenShift 4.18 cluster
 What RDS reference should I use for a RAN deployment on OpenShift 4.20?
 ```
 
-### compare_cluster_rds
+### kube_compare_validate_rds
 
-Combined operation that automatically detects cluster version, finds the appropriate RDS reference, and performs the comparison. This is the recommended tool for comparing against Red Hat Telco Reference Design Specifications.
+Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the recommended tool for RDS validation.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -391,7 +391,7 @@ For Radio Access Network Distributed Unit workloads.
 
 ### Automatic Version Detection
 
-When running inside an OpenShift cluster, the `find_rds_reference` and `compare_cluster_rds` tools can automatically:
+When running inside an OpenShift cluster, the `kube_compare_resolve_rds` and `kube_compare_validate_rds` tools can automatically:
 
 1. Detect the cluster's OpenShift version from the `ClusterVersion` resource
 2. Find the matching RDS container image for that version

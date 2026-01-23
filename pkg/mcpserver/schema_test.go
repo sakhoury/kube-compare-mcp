@@ -13,8 +13,8 @@ import (
 
 var _ = Describe("Schema", func() {
 
-	Describe("ClusterCompareInputSchema", func() {
-		var schema = mcpserver.ClusterCompareInputSchema()
+	Describe("DiffInputSchema", func() {
+		var schema = mcpserver.DiffInputSchema()
 
 		It("returns non-nil schema", func() {
 			Expect(schema).NotTo(BeNil())
@@ -42,8 +42,8 @@ var _ = Describe("Schema", func() {
 		})
 	})
 
-	Describe("FindRDSReferenceInputSchema", func() {
-		var schema = mcpserver.FindRDSReferenceInputSchema()
+	Describe("ResolveRDSInputSchema", func() {
+		var schema = mcpserver.ResolveRDSInputSchema()
 
 		It("returns non-nil schema", func() {
 			Expect(schema).NotTo(BeNil())
@@ -66,8 +66,8 @@ var _ = Describe("Schema", func() {
 		})
 	})
 
-	Describe("CompareClusterRDSInputSchema", func() {
-		var schema = mcpserver.CompareClusterRDSInputSchema()
+	Describe("ValidateRDSInputSchema", func() {
+		var schema = mcpserver.ValidateRDSInputSchema()
 
 		It("returns non-nil schema", func() {
 			Expect(schema).NotTo(BeNil())
@@ -107,21 +107,21 @@ var _ = Describe("Schema", func() {
 	})
 
 	Describe("Schema generation does not panic", func() {
-		It("ClusterCompareInputSchema does not panic", func() {
+		It("DiffInputSchema does not panic", func() {
 			Expect(func() {
-				_ = mcpserver.ClusterCompareInputSchema()
+				_ = mcpserver.DiffInputSchema()
 			}).NotTo(Panic())
 		})
 
-		It("FindRDSReferenceInputSchema does not panic", func() {
+		It("ResolveRDSInputSchema does not panic", func() {
 			Expect(func() {
-				_ = mcpserver.FindRDSReferenceInputSchema()
+				_ = mcpserver.ResolveRDSInputSchema()
 			}).NotTo(Panic())
 		})
 
-		It("CompareClusterRDSInputSchema does not panic", func() {
+		It("ValidateRDSInputSchema does not panic", func() {
 			Expect(func() {
-				_ = mcpserver.CompareClusterRDSInputSchema()
+				_ = mcpserver.ValidateRDSInputSchema()
 			}).NotTo(Panic())
 		})
 	})
