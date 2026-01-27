@@ -29,14 +29,14 @@ func NewServer(version string) *mcp.Server {
 		nil,
 	)
 
-	mcp.AddTool(s, ClusterCompareTool(), HandleClusterCompare)
-	mcp.AddTool(s, FindRDSReferenceTool(), HandleFindRDSReference)
-	mcp.AddTool(s, CompareClusterRDSTool(), HandleCompareClusterRDS)
+	mcp.AddTool(s, ClusterDiffTool(), HandleClusterDiff)
+	mcp.AddTool(s, ResolveRDSTool(), HandleResolveRDS)
+	mcp.AddTool(s, ValidateRDSTool(), HandleValidateRDS)
 
 	logger.Info("MCP server initialized",
 		"name", ServerName,
 		"version", version,
-		"tools", []string{"cluster_compare", "find_rds_reference", "compare_cluster_rds"},
+		"tools", []string{"kube_compare_cluster_diff", "kube_compare_resolve_rds", "kube_compare_validate_rds"},
 	)
 
 	return s

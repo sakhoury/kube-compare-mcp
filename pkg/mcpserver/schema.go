@@ -8,14 +8,14 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// ClusterCompareInputSchema returns the JSON schema for ClusterCompareInput
+// ClusterDiffInputSchema returns the JSON schema for ClusterDiffInput
 // with proper enum constraints for output_format.
 //
 // Note: These schema functions are called during NewServer() initialization,
 // before the server accepts any connections. A panic here fails fast at startup,
 // which is the correct behavior for schema generation errors.
-func ClusterCompareInputSchema() *jsonschema.Schema {
-	schema, err := jsonschema.For[ClusterCompareInput](nil)
+func ClusterDiffInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[ClusterDiffInput](nil)
 	if err != nil {
 		panic(err) // Fails at startup, not during request handling
 	}
@@ -29,10 +29,10 @@ func ClusterCompareInputSchema() *jsonschema.Schema {
 	return schema
 }
 
-// FindRDSReferenceInputSchema returns the JSON schema for FindRDSReferenceInput
+// ResolveRDSInputSchema returns the JSON schema for ResolveRDSInput
 // with proper enum constraints for rds_type.
-func FindRDSReferenceInputSchema() *jsonschema.Schema {
-	schema, err := jsonschema.For[FindRDSReferenceInput](nil)
+func ResolveRDSInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[ResolveRDSInput](nil)
 	if err != nil {
 		panic(err) // Fails at startup, not during request handling
 	}
@@ -45,10 +45,10 @@ func FindRDSReferenceInputSchema() *jsonschema.Schema {
 	return schema
 }
 
-// CompareClusterRDSInputSchema returns the JSON schema for CompareClusterRDSInput
+// ValidateRDSInputSchema returns the JSON schema for ValidateRDSInput
 // with proper enum constraints for rds_type and output_format.
-func CompareClusterRDSInputSchema() *jsonschema.Schema {
-	schema, err := jsonschema.For[CompareClusterRDSInput](nil)
+func ValidateRDSInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[ValidateRDSInput](nil)
 	if err != nil {
 		panic(err) // Fails at startup, not during request handling
 	}

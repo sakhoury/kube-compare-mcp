@@ -48,8 +48,8 @@ var rdsConfigs = map[string]RDSConfig{
 	},
 }
 
-// RDSReferenceResult is the structured response for the find_rds_reference tool.
-type RDSReferenceResult struct {
+// ResolveRDSResult is the structured response for the kube_compare_resolve_rds tool.
+type ResolveRDSResult struct {
 	ClusterVersion    string   `json:"cluster_version"`
 	RHELVersion       string   `json:"rhel_version"`
 	RDSType           string   `json:"rds_type"`
@@ -75,26 +75,23 @@ func NewReferenceService() *ReferenceService {
 
 var defaultReferenceService = NewReferenceService()
 
-// FindRDSReferenceInput defines the typed input for the find_rds_reference tool.
-type FindRDSReferenceInput struct {
+// ResolveRDSInput defines the typed input for the kube_compare_resolve_rds tool.
+type ResolveRDSInput struct {
 	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Base64-encoded kubeconfig content for connecting to the target cluster"`
 	Context    string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 	RDSType    string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS or ran for Telco RAN DU RDS"`
 	OCPVersion string `json:"ocp_version,omitempty" jsonschema:"OpenShift version (e.g. 4.18 or 4.20.0)"`
 }
 
-// FindRDSReferenceOutput is an empty output struct (tool returns text content).
-type FindRDSReferenceOutput struct{}
+// ResolveRDSOutput is an empty output struct (tool returns text content).
+type ResolveRDSOutput struct{}
 
-// FindRDSReferenceTool returns the MCP tool definition for finding RDS references.
-func FindRDSReferenceTool() *mcp.Tool {
+// ResolveRDSTool returns the MCP tool definition for finding RDS references.
+func ResolveRDSTool() *mcp.Tool {
 	return &mcp.Tool{
-		Name: "find_rds_reference",
-		Description: "Find the appropriate RDS (Reference Design Specification) container reference for a cluster. " +
-			"Can query a cluster via kubeconfig to auto-detect the OpenShift version, accept an explicit version, " +
-			"or use in-cluster config when running inside an OpenShift cluster (no parameters needed). " +
-			"The tool automatically selects the best available RHEL variant from the registry (preferring newer versions).",
-		InputSchema: FindRDSReferenceInputSchema(),
+		Name:        "kube_compare_resolve_rds",
+		Description: "Get the correct Red Hat Telco RDS container reference for a cluster's OpenShift version.",
+		InputSchema: ResolveRDSInputSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
 			DestructiveHint: ptrBool(false),
@@ -104,14 +101,14 @@ func FindRDSReferenceTool() *mcp.Tool {
 	}
 }
 
-// HandleFindRDSReference is the MCP tool handler for the find_rds_reference tool.
-// It uses typed input via the FindRDSReferenceInput struct.
-func HandleFindRDSReference(ctx context.Context, req *mcp.CallToolRequest, input FindRDSReferenceInput) (*mcp.CallToolResult, FindRDSReferenceOutput, error) {
+// HandleResolveRDS is the MCP tool handler for the kube_compare_resolve_rds tool.
+// It uses typed input via the ResolveRDSInput struct.
+func HandleResolveRDS(ctx context.Context, req *mcp.CallToolRequest, input ResolveRDSInput) (*mcp.CallToolResult, ResolveRDSOutput, error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
 
-	logger.Debug("Received tool request", "tool", "find_rds_reference")
+	logger.Debug("Received tool request", "tool", "kube_compare_resolve_rds")
 
 	// Handle panics
 	defer func() {
@@ -126,35 +123,35 @@ func HandleFindRDSReference(ctx context.Context, req *mcp.CallToolRequest, input
 
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
-		return newToolResultError(formatErrorForUser(ErrContextCanceled)), FindRDSReferenceOutput{}, nil
+		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ResolveRDSOutput{}, nil
 	}
 
-	// Convert typed input to RDSReferenceArgs
+	// Convert typed input to ResolveRDSArgs
 	// Note: SDK validates enum constraint, so RDSType is already lowercase ("core" or "ran")
-	args := &RDSReferenceArgs{
+	args := &ResolveRDSArgs{
 		Kubeconfig: input.Kubeconfig,
 		Context:    input.Context,
 		RDSType:    input.RDSType,
 		OCPVersion: input.OCPVersion,
 	}
 
-	logger.Debug("Parsed find_rds_reference arguments",
+	logger.Debug("Parsed kube_compare_resolve_rds arguments",
 		"rdsType", args.RDSType,
 		"hasKubeconfig", args.Kubeconfig != "",
 		"context", args.Context,
 		"explicitOCPVersion", args.OCPVersion,
 	)
 
-	resultData, err := FindRDSReferenceInternal(ctx, args)
+	resultData, err := ResolveRDSInternal(ctx, args)
 	if err != nil {
 		logger.Debug("Failed to find RDS reference", "error", err)
-		return newToolResultError(formatErrorForUser(err)), FindRDSReferenceOutput{}, nil
+		return newToolResultError(formatErrorForUser(err)), ResolveRDSOutput{}, nil
 	}
 
 	jsonOutput, err := json.MarshalIndent(resultData, "", "  ")
 	if err != nil {
 		logger.Error("Failed to marshal result", "error", err)
-		return newToolResultError(fmt.Sprintf("Failed to format result: %v", err)), FindRDSReferenceOutput{}, nil
+		return newToolResultError(fmt.Sprintf("Failed to format result: %v", err)), ResolveRDSOutput{}, nil
 	}
 
 	duration := time.Since(start)
@@ -167,16 +164,16 @@ func HandleFindRDSReference(ctx context.Context, req *mcp.CallToolRequest, input
 		"validated", resultData.Validated,
 	)
 
-	return newToolResultText(string(jsonOutput)), FindRDSReferenceOutput{}, nil
+	return newToolResultText(string(jsonOutput)), ResolveRDSOutput{}, nil
 }
 
-// FindRDSReferenceInternal is the core logic for finding RDS references.
-func FindRDSReferenceInternal(ctx context.Context, args *RDSReferenceArgs) (*RDSReferenceResult, error) {
-	return defaultReferenceService.FindRDSReference(ctx, args)
+// ResolveRDSInternal is the core logic for finding RDS references.
+func ResolveRDSInternal(ctx context.Context, args *ResolveRDSArgs) (*ResolveRDSResult, error) {
+	return defaultReferenceService.ResolveRDS(ctx, args)
 }
 
-// FindRDSReference finds the RDS reference for the given arguments.
-func (s *ReferenceService) FindRDSReference(ctx context.Context, args *RDSReferenceArgs) (*RDSReferenceResult, error) {
+// ResolveRDS finds the RDS reference for the given arguments.
+func (s *ReferenceService) ResolveRDS(ctx context.Context, args *ResolveRDSArgs) (*ResolveRDSResult, error) {
 	logger := slog.Default()
 
 	var clusterVersion string
@@ -250,7 +247,7 @@ func (s *ReferenceService) FindRDSReference(ctx context.Context, args *RDSRefere
 				imageRef, err))
 	}
 
-	return &RDSReferenceResult{
+	return &ResolveRDSResult{
 		ClusterVersion:    clusterVersion,
 		RHELVersion:       rhelVariant,
 		RDSType:           args.RDSType,
@@ -325,8 +322,8 @@ func wrapRegistryError(err error, repoRef string) error {
 		"Could not connect to the container registry. Verify network connectivity.")
 }
 
-// RDSReferenceArgs holds the parsed arguments for the find_rds_reference operation.
-type RDSReferenceArgs struct {
+// ResolveRDSArgs holds the parsed arguments for the kube_compare_resolve_rds operation.
+type ResolveRDSArgs struct {
 	Kubeconfig string
 	Context    string
 	RDSType    string

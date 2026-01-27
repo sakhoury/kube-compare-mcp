@@ -23,11 +23,11 @@ var _ = Describe("Server", func() {
 		})
 	})
 
-	Describe("ClusterCompareTool", func() {
-		var tool = mcpserver.ClusterCompareTool()
+	Describe("ClusterDiffTool", func() {
+		var tool = mcpserver.ClusterDiffTool()
 
 		It("has the correct name", func() {
-			Expect(tool.Name).To(Equal("cluster_compare"))
+			Expect(tool.Name).To(Equal("kube_compare_cluster_diff"))
 		})
 
 		It("has a description", func() {
@@ -35,11 +35,11 @@ var _ = Describe("Server", func() {
 		})
 	})
 
-	Describe("FindRDSReferenceTool", func() {
-		var tool = mcpserver.FindRDSReferenceTool()
+	Describe("ResolveRDSTool", func() {
+		var tool = mcpserver.ResolveRDSTool()
 
 		It("has the correct name", func() {
-			Expect(tool.Name).To(Equal("find_rds_reference"))
+			Expect(tool.Name).To(Equal("kube_compare_resolve_rds"))
 		})
 
 		It("has a description", func() {
@@ -47,11 +47,11 @@ var _ = Describe("Server", func() {
 		})
 	})
 
-	Describe("CompareClusterRDSTool", func() {
-		var tool = mcpserver.CompareClusterRDSTool()
+	Describe("ValidateRDSTool", func() {
+		var tool = mcpserver.ValidateRDSTool()
 
 		It("has the correct name", func() {
-			Expect(tool.Name).To(Equal("compare_cluster_rds"))
+			Expect(tool.Name).To(Equal("kube_compare_validate_rds"))
 		})
 
 		It("has a description", func() {

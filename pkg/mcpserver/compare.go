@@ -59,9 +59,9 @@ func newToolResultError(errMsg string) *mcp.CallToolResult {
 	}
 }
 
-// ClusterCompareInput defines the typed input for the cluster_compare tool.
+// ClusterDiffInput defines the typed input for the kube_compare_cluster_diff tool.
 // JSON Schema tags are used for automatic schema generation.
-type ClusterCompareInput struct {
+type ClusterDiffInput struct {
 	Reference    string `json:"reference" jsonschema:"Reference configuration URL"`
 	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for comparison results"`
 	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
@@ -69,22 +69,20 @@ type ClusterCompareInput struct {
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 }
 
-// ClusterCompareOutput is an empty output struct (tool returns text content).
-type ClusterCompareOutput struct{}
+// ClusterDiffOutput is an empty output struct (tool returns text content).
+type ClusterDiffOutput struct{}
 
 // ptrBool returns a pointer to a bool value, used for optional annotation fields.
 func ptrBool(b bool) *bool {
 	return &b
 }
 
-// ClusterCompareTool returns the MCP tool definition for cluster-compare.
-func ClusterCompareTool() *mcp.Tool {
+// ClusterDiffTool returns the MCP tool definition for cluster-compare.
+func ClusterDiffTool() *mcp.Tool {
 	return &mcp.Tool{
-		Name: "cluster_compare",
-		Description: "Compare Kubernetes cluster configurations against a reference configuration. " +
-			"Detects configuration drift between live cluster resources and a known-good reference template. " +
-			"References must be provided as HTTP/HTTPS URLs or OCI container image references.",
-		InputSchema: ClusterCompareInputSchema(),
+		Name:        "kube_compare_cluster_diff",
+		Description: "Detect configuration drift between a Kubernetes/OpenShift cluster and a reference design.",
+		InputSchema: ClusterDiffInputSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
 			DestructiveHint: ptrBool(false),
@@ -158,14 +156,14 @@ func NewCompareService() *CompareService {
 
 var defaultCompareService = NewCompareService()
 
-// HandleClusterCompare is the MCP tool handler for the cluster_compare tool.
-// It uses typed input via the ClusterCompareInput struct.
-func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input ClusterCompareInput) (*mcp.CallToolResult, ClusterCompareOutput, error) {
+// HandleClusterDiff is the MCP tool handler for the kube_compare_cluster_diff tool.
+// It uses typed input via the ClusterDiffInput struct.
+func HandleClusterDiff(ctx context.Context, req *mcp.CallToolRequest, input ClusterDiffInput) (*mcp.CallToolResult, ClusterDiffOutput, error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
 
-	logger.Debug("Received tool request", "tool", "cluster_compare")
+	logger.Debug("Received tool request", "tool", "kube_compare_cluster_diff")
 
 	// Handle panics
 	defer func() {
@@ -180,7 +178,7 @@ func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input C
 
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
-		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ClusterCompareOutput{}, nil
+		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ClusterDiffOutput{}, nil
 	}
 
 	// Convert typed input to CompareArgs
@@ -198,7 +196,7 @@ func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input C
 			"'context' parameter requires 'kubeconfig' to also be provided",
 			"Provide a base64-encoded kubeconfig along with the context name")
 		logger.Debug("Validation failed", "error", err)
-		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
+		return newToolResultError(formatErrorForUser(err)), ClusterDiffOutput{}, nil
 	}
 
 	logger.Debug("Parsed compare arguments",
@@ -211,7 +209,7 @@ func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input C
 
 	if err := validateReference(ctx, args); err != nil {
 		logger.Debug("Reference validation failed", "error", err)
-		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
+		return newToolResultError(formatErrorForUser(err)), ClusterDiffOutput{}, nil
 	}
 
 	logger.Info("Starting cluster comparison", "reference", args.Reference)
@@ -224,7 +222,7 @@ func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input C
 			"duration", duration,
 			"reference", args.Reference,
 		)
-		return newToolResultError(formatErrorForUser(err)), ClusterCompareOutput{}, nil
+		return newToolResultError(formatErrorForUser(err)), ClusterDiffOutput{}, nil
 	}
 
 	logger.Info("Comparison completed",
@@ -233,7 +231,7 @@ func HandleClusterCompare(ctx context.Context, req *mcp.CallToolRequest, input C
 		"outputLength", len(output),
 	)
 
-	return newToolResultText(output), ClusterCompareOutput{}, nil
+	return newToolResultText(output), ClusterDiffOutput{}, nil
 }
 
 // ExtractArguments safely extracts the arguments map from the MCP request.

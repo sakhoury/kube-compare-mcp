@@ -11,11 +11,11 @@ import (
 
 var _ = Describe("RDSCompareHandler", func() {
 
-	Describe("CompareClusterRDSTool", func() {
-		var tool = mcpserver.CompareClusterRDSTool()
+	Describe("ValidateRDSTool", func() {
+		var tool = mcpserver.ValidateRDSTool()
 
 		It("has the correct name", func() {
-			Expect(tool.Name).To(Equal("compare_cluster_rds"))
+			Expect(tool.Name).To(Equal("kube_compare_validate_rds"))
 		})
 
 		It("has a description", func() {
@@ -23,9 +23,9 @@ var _ = Describe("RDSCompareHandler", func() {
 		})
 	})
 
-	Describe("RDSCompareArgs struct", func() {
+	Describe("ValidateRDSArgs struct", func() {
 		It("can be created with all fields", func() {
-			args := mcpserver.RDSCompareArgs{
+			args := mcpserver.ValidateRDSArgs{
 				Kubeconfig:   "base64data",
 				Context:      "my-context",
 				RDSType:      "core",
