@@ -11,7 +11,7 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
 - [Running the Server](#running-the-server)
 - [Deployment](#deployment)
 - [MCP Tools Reference](#mcp-tools-reference)
-  - [kube_compare_diff](#kube_compare_diff)
+  - [kube_compare_cluster_diff](#kube_compare_cluster_diff)
   - [kube_compare_resolve_rds](#kube_compare_resolve_rds)
   - [kube_compare_validate_rds](#kube_compare_validate_rds)
 - [RDS Support](#rds-reference-design-specification-support)
@@ -47,7 +47,7 @@ flowchart TB
     subgraph server [kube-compare-mcp Server]
         Transport[Transport Layer<br/>stdio / http]
         Tools[MCP Tools]
-        Diff[kube_compare_diff]
+        Diff[kube_compare_cluster_diff]
         ResolveRDS[kube_compare_resolve_rds]
         ValidateRDS[kube_compare_validate_rds]
     end
@@ -274,7 +274,7 @@ Configure your MCP client to connect to the server's endpoint:
 
 The server exposes three MCP tools:
 
-### kube_compare_diff
+### kube_compare_cluster_diff
 
 Detect configuration drift between a Kubernetes/OpenShift cluster and a reference design.
 

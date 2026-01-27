@@ -13,8 +13,8 @@ import (
 
 var _ = Describe("Schema", func() {
 
-	Describe("DiffInputSchema", func() {
-		var schema = mcpserver.DiffInputSchema()
+	Describe("ClusterDiffInputSchema", func() {
+		var schema = mcpserver.ClusterDiffInputSchema()
 
 		It("returns non-nil schema", func() {
 			Expect(schema).NotTo(BeNil())
@@ -107,9 +107,9 @@ var _ = Describe("Schema", func() {
 	})
 
 	Describe("Schema generation does not panic", func() {
-		It("DiffInputSchema does not panic", func() {
+		It("ClusterDiffInputSchema does not panic", func() {
 			Expect(func() {
-				_ = mcpserver.DiffInputSchema()
+				_ = mcpserver.ClusterDiffInputSchema()
 			}).NotTo(Panic())
 		})
 

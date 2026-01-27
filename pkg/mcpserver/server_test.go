@@ -23,11 +23,11 @@ var _ = Describe("Server", func() {
 		})
 	})
 
-	Describe("DiffTool", func() {
-		var tool = mcpserver.DiffTool()
+	Describe("ClusterDiffTool", func() {
+		var tool = mcpserver.ClusterDiffTool()
 
 		It("has the correct name", func() {
-			Expect(tool.Name).To(Equal("kube_compare_diff"))
+			Expect(tool.Name).To(Equal("kube_compare_cluster_diff"))
 		})
 
 		It("has a description", func() {

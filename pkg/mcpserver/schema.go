@@ -8,14 +8,14 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-// DiffInputSchema returns the JSON schema for DiffInput
+// ClusterDiffInputSchema returns the JSON schema for ClusterDiffInput
 // with proper enum constraints for output_format.
 //
 // Note: These schema functions are called during NewServer() initialization,
 // before the server accepts any connections. A panic here fails fast at startup,
 // which is the correct behavior for schema generation errors.
-func DiffInputSchema() *jsonschema.Schema {
-	schema, err := jsonschema.For[DiffInput](nil)
+func ClusterDiffInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[ClusterDiffInput](nil)
 	if err != nil {
 		panic(err) // Fails at startup, not during request handling
 	}
