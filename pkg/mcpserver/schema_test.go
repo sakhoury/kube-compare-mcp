@@ -52,7 +52,7 @@ var _ = Describe("Schema", func() {
 		It("has rds_type property with enum constraint", func() {
 			prop, ok := schema.Properties["rds_type"]
 			Expect(ok).To(BeTrue(), "rds_type property should exist")
-			Expect(prop.Enum).To(ConsistOf("core", "ran"))
+			Expect(prop.Enum).To(ConsistOf("core", "ran", "hub"))
 		})
 
 		It("has kubeconfig property", func() {
@@ -76,7 +76,7 @@ var _ = Describe("Schema", func() {
 		It("has rds_type property with enum constraint", func() {
 			prop, ok := schema.Properties["rds_type"]
 			Expect(ok).To(BeTrue(), "rds_type property should exist")
-			Expect(prop.Enum).To(ConsistOf("core", "ran"))
+			Expect(prop.Enum).To(ConsistOf("core", "ran", "hub"))
 		})
 
 		It("has output_format property with enum constraint", func() {
