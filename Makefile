@@ -25,6 +25,7 @@ GOLANGCI_LINT_VERSION ?= v2.8.0
 .PHONY: clean install run
 .PHONY: test test-cover vet fmt lint lint-fix verify mod-tidy ensure-golangci-lint
 .PHONY: docker-build docker-push deploy undeploy setup-registry-credentials
+.PHONY: deploy-examples undeploy-examples
 .PHONY: help
 
 all: build
@@ -141,6 +142,16 @@ setup-registry-credentials:
 		--dry-run=client -o yaml | kubectl apply -f -
 	@echo "Registry credentials configured successfully"
 
+## deploy-examples: Deploy example BIOS reference ConfigMaps to cluster
+deploy-examples:
+	@echo "Deploying example BIOS reference configs..."
+	kubectl apply -k examples/bios-reference-configs/
+	@echo "Example BIOS reference configs deployed to 'reference-configs' namespace"
+
+## undeploy-examples: Remove example BIOS reference ConfigMaps from cluster
+undeploy-examples:
+	kubectl delete -k examples/bios-reference-configs/ --ignore-not-found=true
+
 ## help: Show this help message
 help:
 	@echo "Usage: make [target]"
@@ -163,3 +174,6 @@ help:
 	@echo ""
 	@echo "Full deployment workflow (build, push, deploy, configure registry):"
 	@echo "  make docker-build docker-push deploy setup-registry-credentials IMG=quay.io/myuser/kube-compare-mcp:latest"
+	@echo ""
+	@echo "Deploy example BIOS reference configs:"
+	@echo "  make deploy-examples                                            # Deploy example ConfigMaps"

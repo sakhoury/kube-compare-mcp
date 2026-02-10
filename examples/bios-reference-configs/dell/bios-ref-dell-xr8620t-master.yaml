@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bios-ref-dell-xr8620t-master
+  namespace: reference-configs
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: bios-reference
+    bios-reference/vendor: dell-inc
+    bios-reference/model: xr8620t
+    bios-reference/role: master
+data:
+  biosVersion: "2.19.1"
+  settings: |
+    BootMode: Uefi
+    SysProfile: Custom
+    WorkloadProfile: TelcoOptimizedProfile
+    SriovGlobalEnable: Enabled
+    MadtCoreEnumeration: Linear
+    ProcC1E: Disabled
+    ProcPwrPerf: OsDbpm

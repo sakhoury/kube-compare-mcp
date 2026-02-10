@@ -17,7 +17,6 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/google/go-containerregistry/pkg/authn"
@@ -40,42 +39,18 @@ const (
 	DefaultImagePullTimeout = 5 * time.Minute
 )
 
-// newToolResultText creates a successful tool result with text content.
-func newToolResultText(text string) *mcp.CallToolResult {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: text},
-		},
-	}
-}
-
-// newToolResultError creates an error tool result with the given message.
-func newToolResultError(errMsg string) *mcp.CallToolResult {
-	return &mcp.CallToolResult{
-		Content: []mcp.Content{
-			&mcp.TextContent{Text: errMsg},
-		},
-		IsError: true,
-	}
-}
-
 // ClusterDiffInput defines the typed input for the kube_compare_cluster_diff tool.
 // JSON Schema tags are used for automatic schema generation.
 type ClusterDiffInput struct {
 	Reference    string `json:"reference" jsonschema:"Reference configuration URL"`
 	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for comparison results"`
 	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
-	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Base64-encoded kubeconfig content for connecting to a remote cluster"`
+	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to a remote cluster. If omitted, uses in-cluster config."`
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 }
 
 // ClusterDiffOutput is an empty output struct (tool returns text content).
 type ClusterDiffOutput struct{}
-
-// ptrBool returns a pointer to a bool value, used for optional annotation fields.
-func ptrBool(b bool) *bool {
-	return &b
-}
 
 // ClusterDiffTool returns the MCP tool definition for cluster-compare.
 func ClusterDiffTool() *mcp.Tool {
@@ -122,15 +97,6 @@ func getImagePullTimeout() time.Duration {
 	return DefaultImagePullTimeout
 }
 
-var requestIDCounter atomic.Uint64
-
-// generateRequestID creates a unique request ID for correlation logging.
-// Thread-safe for concurrent use across HTTP handlers.
-func generateRequestID() string {
-	counter := requestIDCounter.Add(1)
-	return fmt.Sprintf("%d-%05d", time.Now().Unix(), counter%100000)
-}
-
 // CompareService encapsulates dependencies for compare operations.
 // This enables dependency injection for testing.
 type CompareService struct {
@@ -158,7 +124,7 @@ var defaultCompareService = NewCompareService()
 
 // HandleClusterDiff is the MCP tool handler for the kube_compare_cluster_diff tool.
 // It uses typed input via the ClusterDiffInput struct.
-func HandleClusterDiff(ctx context.Context, req *mcp.CallToolRequest, input ClusterDiffInput) (*mcp.CallToolResult, ClusterDiffOutput, error) {
+func HandleClusterDiff(ctx context.Context, req *mcp.CallToolRequest, input ClusterDiffInput) (toolResult *mcp.CallToolResult, diffOutput ClusterDiffOutput, toolErr error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
@@ -173,6 +139,7 @@ func HandleClusterDiff(ctx context.Context, req *mcp.CallToolRequest, input Clus
 				"panic", r,
 				"stackTrace", stackTrace,
 			)
+			toolResult = newToolResultError(fmt.Sprintf("Internal error: %v", r))
 		}
 	}()
 
@@ -730,7 +697,14 @@ func RunCompare(ctx context.Context, args *CompareArgs) (string, error) {
 	var configFlags *genericclioptions.ConfigFlags
 	if args.Kubeconfig != "" {
 		logger.Info("Using provided kubeconfig for cluster connection")
-		restConfig, err := BuildSecureRestConfig(args.Kubeconfig, args.Context)
+
+		// Use DecodeOrParseKubeconfig to support both raw YAML and base64-encoded kubeconfig
+		kubeconfigData, err := DecodeOrParseKubeconfig(args.Kubeconfig)
+		if err != nil {
+			return "", err
+		}
+
+		restConfig, err := BuildSecureRestConfigFromBytes(kubeconfigData, args.Context)
 		if err != nil {
 			return "", err
 		}

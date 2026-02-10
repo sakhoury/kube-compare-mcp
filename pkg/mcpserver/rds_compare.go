@@ -22,7 +22,7 @@ type ValidateRDSResult struct {
 
 // ValidateRDSInput defines the typed input for the kube_compare_validate_rds tool.
 type ValidateRDSInput struct {
-	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content for connecting to the target cluster"`
+	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 	RDSType      string `json:"rds_type" jsonschema:"RDS type to compare against: core for Telco Core RDS or ran for Telco RAN DU RDS"`
 	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for the comparison results"`
@@ -58,7 +58,7 @@ type ValidateRDSArgs struct {
 
 // HandleValidateRDS is the MCP tool handler for the kube_compare_validate_rds tool.
 // It uses typed input via the ValidateRDSInput struct.
-func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input ValidateRDSInput) (*mcp.CallToolResult, ValidateRDSOutput, error) {
+func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input ValidateRDSInput) (toolResult *mcp.CallToolResult, validateOutput ValidateRDSOutput, toolErr error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
@@ -73,12 +73,22 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 				"panic", r,
 				"stackTrace", stackTrace,
 			)
+			toolResult = newToolResultError(fmt.Sprintf("Internal error: %v", r))
 		}
 	}()
 
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
 		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ValidateRDSOutput{}, nil
+	}
+
+	// Validate context requires kubeconfig
+	if input.Context != "" && input.Kubeconfig == "" {
+		err := NewValidationError("context",
+			"'context' parameter requires 'kubeconfig' to also be provided",
+			"Provide a kubeconfig along with the context name")
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), ValidateRDSOutput{}, nil
 	}
 
 	// Note: SDK validates enum constraint, so RDSType is already lowercase ("core" or "ran")

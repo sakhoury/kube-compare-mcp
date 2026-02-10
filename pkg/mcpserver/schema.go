@@ -66,3 +66,63 @@ func ValidateRDSInputSchema() *jsonschema.Schema {
 
 	return schema
 }
+
+// Kubernetes resource name pattern (RFC 1123 DNS subdomain).
+const k8sNamePattern = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
+
+// BIOSDiffInputSchema returns the JSON schema for BIOSDiffInput
+// with proper enum constraints, defaults, and validation patterns.
+func BIOSDiffInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[BIOSDiffInput](nil)
+	if err != nil {
+		panic(err) // Fails at startup, not during request handling
+	}
+
+	// Add pattern validation for Kubernetes resource names
+	if prop, ok := schema.Properties["namespace"]; ok {
+		prop.Pattern = k8sNamePattern
+	}
+
+	if prop, ok := schema.Properties["host_name"]; ok {
+		prop.Pattern = k8sNamePattern
+	}
+
+	if prop, ok := schema.Properties["reference_source"]; ok {
+		prop.Pattern = k8sNamePattern
+		prop.Default = json.RawMessage(`"reference-configs"`)
+	}
+
+	if prop, ok := schema.Properties["reference_override"]; ok {
+		prop.Pattern = k8sNamePattern
+	}
+
+	// Add enum constraint for output_format
+	if prop, ok := schema.Properties["output_format"]; ok {
+		prop.Enum = []any{"json", "yaml"}
+		prop.Default = json.RawMessage(`"json"`)
+	}
+
+	return schema
+}
+
+// BIOSDiffOutputSchema returns the JSON schema for BIOSDiffResult
+// enabling structured output validation per MCP 2025-06-18 specification.
+func BIOSDiffOutputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[BIOSDiffResult](nil)
+	if err != nil {
+		panic(err) // Fails at startup, not during request handling
+	}
+
+	// Add descriptions to top-level fields for better AI understanding
+	if prop, ok := schema.Properties["Namespace"]; ok {
+		prop.Description = "The namespace that was compared"
+	}
+	if prop, ok := schema.Properties["Hosts"]; ok {
+		prop.Description = "Comparison results for each BareMetalHost"
+	}
+	if prop, ok := schema.Properties["Summary"]; ok {
+		prop.Description = "Aggregate statistics across all hosts"
+	}
+
+	return schema
+}

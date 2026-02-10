@@ -14,7 +14,9 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
   - [kube_compare_cluster_diff](#kube_compare_cluster_diff)
   - [kube_compare_resolve_rds](#kube_compare_resolve_rds)
   - [kube_compare_validate_rds](#kube_compare_validate_rds)
+  - [baremetal_bios_diff](#baremetal_bios_diff)
 - [RDS Support](#rds-reference-design-specification-support)
+- [BIOS Reference Configurations](#bios-reference-configurations)
 - [Connecting to Remote Clusters](#connecting-to-remote-clusters)
 - [Reference Configuration Formats](#reference-configuration-formats)
 - [Output Formats](#output-formats)
@@ -31,6 +33,7 @@ This project provides a [Model Context Protocol (MCP)](https://modelcontextproto
 - Detect configuration drift from known-good baselines
 - Generate structured comparison reports in JSON, YAML, or JUnit formats
 - **Automatically discover and use Red Hat Telco Reference Design Specifications (RDS)**
+- **Compare bare metal host BIOS settings against reference configurations for ZTP-provisioned clusters**
 
 **Note:** This server is designed for remote deployment (e.g., in a Kubernetes cluster). Reference configurations must be provided via HTTP/HTTPS URLs or OCI container image references - local filesystem paths are not supported.
 
@@ -50,6 +53,7 @@ flowchart TB
         Diff[kube_compare_cluster_diff]
         ResolveRDS[kube_compare_resolve_rds]
         ValidateRDS[kube_compare_validate_rds]
+        BIOSDiff[baremetal_bios_diff]
     end
 
     subgraph external [External Resources]
@@ -65,6 +69,7 @@ flowchart TB
     Tools --> Diff
     Tools --> ResolveRDS
     Tools --> ValidateRDS
+    Tools --> BIOSDiff
     Diff --> K8sCluster
     Diff --> Registry
     Diff --> HTTPRef
@@ -72,6 +77,7 @@ flowchart TB
     ResolveRDS --> Registry
     ValidateRDS --> Diff
     ValidateRDS --> ResolveRDS
+    BIOSDiff --> K8sCluster
 ```
 
 ## Quick Start
@@ -272,7 +278,7 @@ Configure your MCP client to connect to the server's endpoint:
 
 ## MCP Tools Reference
 
-The server exposes three MCP tools:
+The server exposes four MCP tools:
 
 ### kube_compare_cluster_diff
 
@@ -371,6 +377,74 @@ Compare my cluster against the Telco Core RDS
 Check if my OpenShift cluster is compliant with the Telco RAN DU reference design
 ```
 
+### baremetal_bios_diff
+
+Compare BIOS versions and settings of bare metal hosts against reference configurations. Targets ZTP-provisioned clusters managed via ACM hub.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | Yes | Namespace on the hub cluster containing BareMetalHost resources to compare. |
+| `host_name` | string | No | Specific host to compare. Omit to compare all hosts in the namespace. |
+| `reference_source` | string | No | Namespace containing BIOS reference ConfigMaps. Default: `reference-configs`. |
+| `reference_override` | string | No | Explicit ConfigMap name to use, bypassing auto-matching by server model. |
+| `output_format` | string | No | Output format: `json` or `yaml`. Default: `json`. |
+| `kubeconfig` | string | No | Kubeconfig content for the ACM hub cluster (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config. |
+| `context` | string | No | Kubernetes context name to use from the provided kubeconfig. Only applicable when `kubeconfig` is provided. |
+
+**Response:**
+
+```json
+{
+  "Namespace": "my-cluster",
+  "Hosts": [
+    {
+      "Name": "worker-0",
+      "Namespace": "my-cluster",
+      "Role": "worker",
+      "ServerModel": {
+        "Manufacturer": "Dell Inc.",
+        "ProductName": "XR8620t"
+      },
+      "Reference": "bios-ref-dell-xr8620t-worker",
+      "ReferenceSource": "mcp-server-cluster",
+      "BIOSVersion": {
+        "Expected": "2.19.1",
+        "Actual": "2.18.0",
+        "Match": false
+      },
+      "SettingsDiff": [
+        {
+          "Setting": "SriovGlobalEnable",
+          "Expected": "Enabled",
+          "Actual": "Disabled"
+        }
+      ],
+      "Compliant": false
+    }
+  ],
+  "Summary": {
+    "TotalHosts": 1,
+    "CompliantHosts": 0,
+    "NumDiffHosts": 1,
+    "ErrorHosts": 0
+  }
+}
+```
+
+**Example prompts:**
+
+```
+Compare the BIOS settings of all hosts in namespace my-cluster against reference configurations
+```
+
+```
+Check if host worker-0 in namespace my-cluster has compliant BIOS settings
+```
+
+```
+Validate BIOS configuration for all bare metal hosts in the spoke-cluster-1 namespace
+```
+
 ## RDS (Reference Design Specification) Support
 
 This server includes specialized support for Red Hat's Telco Reference Design Specifications:
@@ -397,6 +471,88 @@ When running inside an OpenShift cluster, the `kube_compare_resolve_rds` and `ku
 2. Find the matching RDS container image for that version
 3. Select the best RHEL variant available (preferring newer versions)
 4. Validate the image is accessible before returning
+
+## BIOS Reference Configurations
+
+The `baremetal_bios_diff` tool compares bare metal host BIOS settings against reference ConfigMaps stored on the MCP server cluster. This section describes how to create and deploy these references.
+
+### ConfigMap Format
+
+Each reference ConfigMap contains the expected BIOS version and settings for a specific server model and role:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bios-ref-dell-xr8620t-master
+  namespace: reference-configs
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: bios-reference
+    bios-reference/vendor: dell-inc
+    bios-reference/model: xr8620t
+    bios-reference/role: master
+data:
+  biosVersion: "2.19.1"
+  settings: |
+    BootMode: Uefi
+    SysProfile: Custom
+    WorkloadProfile: TelcoOptimizedProfile
+    SriovGlobalEnable: Enabled
+    MadtCoreEnumeration: Linear
+    ProcC1E: Disabled
+    ProcPwrPerf: OsDbpm
+```
+
+**Required fields:**
+
+| Field | Description |
+|-------|-------------|
+| `metadata.name` | ConfigMap name, conventionally `bios-ref-<vendor>-<model>-<role>` |
+| `metadata.namespace` | Must match the `reference_source` parameter (default: `reference-configs`) |
+| `data.biosVersion` | Expected BIOS version string |
+| `data.settings` | YAML-formatted key-value pairs of expected BIOS settings (only listed settings are compared) |
+
+**Required labels for auto-matching:**
+
+| Label | Description |
+|-------|-------------|
+| `bios-reference/vendor` | Normalized vendor name (e.g., `dell-inc`, `hpe`) |
+| `bios-reference/model` | Normalized server model (e.g., `xr8620t`, `proliant-dl110`) |
+| `bios-reference/role` | Node role: `master` or `worker` |
+
+### Reference Matching
+
+The tool matches hosts to reference ConfigMaps using a two-step process:
+
+1. **Exact name match** -- Constructs the expected ConfigMap name from the host's manufacturer, product name, and role (e.g., `bios-ref-dell-inc-xr8620t-worker`) and looks for an exact match.
+2. **Label-based fuzzy match** -- If no exact match is found, searches for ConfigMaps with matching `bios-reference/vendor` and `bios-reference/role` labels, then uses Smith-Waterman-Gotoh string similarity to find the best model match (minimum similarity threshold: 0.7).
+
+You can bypass auto-matching entirely by specifying a `reference_override` parameter with the exact ConfigMap name.
+
+### Deploying Reference ConfigMaps
+
+Example reference configurations for Dell and HPE servers are included in the repository:
+
+```bash
+# Deploy example BIOS reference ConfigMaps
+kubectl apply -k examples/bios-reference-configs/
+
+# Or use the Makefile target
+make deploy-examples
+```
+
+This creates the `reference-configs` namespace and deploys example ConfigMaps for several server models. Customize or add your own ConfigMaps following the format above.
+
+To remove the examples:
+
+```bash
+make undeploy-examples
+```
+
+### Security Model
+
+Reference ConfigMaps are **only** read from the MCP server's own cluster (via in-cluster config), never from the user-provided kubeconfig. This ensures the server operator controls the compliance baseline -- users cannot influence which reference configurations are used for comparison.
 
 ## Connecting to Remote Clusters
 
@@ -661,6 +817,12 @@ make setup-registry-credentials
 
 # Remove deployment from cluster
 make undeploy
+
+# Deploy example BIOS reference ConfigMaps
+make deploy-examples
+
+# Remove example BIOS reference ConfigMaps
+make undeploy-examples
 ```
 
 **Variables:**
