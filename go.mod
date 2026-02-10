@@ -6,7 +6,7 @@ toolchain go1.25.7
 
 require (
 	github.com/google/go-containerregistry v0.20.7
-	github.com/google/jsonschema-go v0.3.0
+	github.com/google/jsonschema-go v0.4.2
 	github.com/modelcontextprotocol/go-sdk v1.2.0
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.0
