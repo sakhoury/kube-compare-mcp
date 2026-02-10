@@ -25,6 +25,7 @@ var (
 const (
 	RDSTypeCore     = "core"
 	RDSTypeRAN      = "ran"
+	RDSTypeHub      = "hub"
 	registryTimeout = 30 * time.Second
 )
 
@@ -45,6 +46,11 @@ var rdsConfigs = map[string]RDSConfig{
 		ImageBase:    "registry.redhat.io/openshift4/ztp-site-generate",
 		Path:         "/home/ztp/reference/metadata.yaml",
 		RHELVariants: []string{"rhel8"},
+	},
+	RDSTypeHub: {
+		ImageBase:    "registry.redhat.io/openshift4/openshift-telco-hub-rds",
+		Path:         "/telco-hub/configuration/reference-crs-kube-compare/metadata.yaml",
+		RHELVariants: []string{"rhel9", "rhel8"},
 	},
 }
 

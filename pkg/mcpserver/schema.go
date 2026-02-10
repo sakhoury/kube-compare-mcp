@@ -39,7 +39,7 @@ func ResolveRDSInputSchema() *jsonschema.Schema {
 
 	// Add enum constraint for rds_type
 	if prop, ok := schema.Properties["rds_type"]; ok {
-		prop.Enum = []any{"core", "ran"}
+		prop.Enum = []any{"core", "ran", "hub"}
 	}
 
 	return schema
@@ -55,7 +55,7 @@ func ValidateRDSInputSchema() *jsonschema.Schema {
 
 	// Add enum constraint for rds_type
 	if prop, ok := schema.Properties["rds_type"]; ok {
-		prop.Enum = []any{"core", "ran"}
+		prop.Enum = []any{"core", "ran", "hub"}
 	}
 
 	// Add enum constraint for output_format

@@ -47,6 +47,12 @@ var _ = Describe("ReferenceHandler", func() {
 			Entry("RAN RDS with RHEL8",
 				mcpserver.RDSTypeRAN, "rhel8", "v4.17",
 				"ztp-site-generate-rhel8:v4.17"),
+			Entry("hub RDS with RHEL9",
+				mcpserver.RDSTypeHub, "rhel9", "v4.19",
+				"openshift-telco-hub-rds-rhel9:v4.19"),
+			Entry("hub RDS with RHEL8",
+				mcpserver.RDSTypeHub, "rhel8", "v4.20",
+				"openshift-telco-hub-rds-rhel8:v4.20"),
 		)
 	})
 
@@ -116,6 +122,10 @@ var _ = Describe("ReferenceHandler", func() {
 
 		It("has RAN RDS config", func() {
 			Expect(mcpserver.RDSTypeRAN).To(Equal("ran"))
+		})
+
+		It("has Hub RDS config", func() {
+			Expect(mcpserver.RDSTypeHub).To(Equal("hub"))
 		})
 	})
 
