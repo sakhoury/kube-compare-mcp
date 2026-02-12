@@ -77,7 +77,7 @@ var defaultReferenceService = NewReferenceService()
 
 // ResolveRDSInput defines the typed input for the kube_compare_resolve_rds tool.
 type ResolveRDSInput struct {
-	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Base64-encoded kubeconfig content for connecting to the target cluster"`
+	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
 	Context    string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 	RDSType    string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS or ran for Telco RAN DU RDS"`
 	OCPVersion string `json:"ocp_version,omitempty" jsonschema:"OpenShift version (e.g. 4.18 or 4.20.0)"`
@@ -103,7 +103,7 @@ func ResolveRDSTool() *mcp.Tool {
 
 // HandleResolveRDS is the MCP tool handler for the kube_compare_resolve_rds tool.
 // It uses typed input via the ResolveRDSInput struct.
-func HandleResolveRDS(ctx context.Context, req *mcp.CallToolRequest, input ResolveRDSInput) (*mcp.CallToolResult, ResolveRDSOutput, error) {
+func HandleResolveRDS(ctx context.Context, req *mcp.CallToolRequest, input ResolveRDSInput) (toolResult *mcp.CallToolResult, resolveOutput ResolveRDSOutput, toolErr error) {
 	requestID := generateRequestID()
 	logger := slog.Default().With("requestID", requestID)
 	start := time.Now()
@@ -118,12 +118,22 @@ func HandleResolveRDS(ctx context.Context, req *mcp.CallToolRequest, input Resol
 				"panic", r,
 				"stackTrace", stackTrace,
 			)
+			toolResult = newToolResultError(fmt.Sprintf("Internal error: %v", r))
 		}
 	}()
 
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
 		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ResolveRDSOutput{}, nil
+	}
+
+	// Validate context requires kubeconfig
+	if input.Context != "" && input.Kubeconfig == "" {
+		err := NewValidationError("context",
+			"'context' parameter requires 'kubeconfig' to also be provided",
+			"Provide a kubeconfig along with the context name")
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), ResolveRDSOutput{}, nil
 	}
 
 	// Convert typed input to ResolveRDSArgs
@@ -188,7 +198,14 @@ func (s *ReferenceService) ResolveRDS(ctx context.Context, args *ResolveRDSArgs)
 
 		if args.Kubeconfig != "" {
 			logger.Debug("Using provided kubeconfig for version detection")
-			restConfig, err = BuildSecureRestConfig(args.Kubeconfig, args.Context)
+
+			// Use DecodeOrParseKubeconfig to support both raw YAML and base64-encoded kubeconfig
+			kubeconfigData, err := DecodeOrParseKubeconfig(args.Kubeconfig)
+			if err != nil {
+				return nil, err
+			}
+
+			restConfig, err = BuildSecureRestConfigFromBytes(kubeconfigData, args.Context)
 			if err != nil {
 				return nil, err
 			}

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bios-ref-hpe-proliant-dl110-master
+  namespace: reference-configs
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: bios-reference
+    bios-reference/vendor: hpe
+    bios-reference/model: proliant-dl110
+    bios-reference/role: master
+data:
+  biosVersion: "H08 v1.88"
+  settings: |
+    WorkloadProfile: vRAN
+    ThermalConfig: EnhancedCPUCooling

@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bios-ref-hpe-proliant-e910t-master
+  namespace: reference-configs
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: bios-reference
+    bios-reference/vendor: hpe
+    bios-reference/model: proliant-e910t
+    bios-reference/role: master
+data:
+  biosVersion: "H08 v1.88 (05/13/2021)"
+  settings: |
+    # Boot Configuration
+    BootMode: Uefi
+    UefiOptimizedBoot: Enabled
+    # Performance Settings
+    WorkloadProfile: vRAN
+    PowerRegulator: StaticHighPerf
+    EnergyPerfBias: MaxPerf
+    EnergyEfficientTurbo: Disabled
+    # Processor Settings
+    ProcHyperthreading: Enabled
+    ProcTurbo: Enabled
+    ProcX2Apic: Enabled
+    SubNumaClustering: Disabled
+    # Virtualization
+    IntelProcVtd: Enabled
+    ProcVirtualization: Enabled
+    Sriov: Enabled
+    # Memory Settings
+    NumaGroupSizeOpt: Flat
+    # Thermal
+    ThermalConfig: OptimalCooling

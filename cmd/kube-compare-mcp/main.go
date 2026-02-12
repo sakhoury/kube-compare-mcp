@@ -165,18 +165,29 @@ func loggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 
 		start := time.Now()
 
+		// Log incoming MCP requests for observability
+		if r.Method == "POST" && r.URL.Path == "/mcp" {
+			logger.Info("Incoming MCP request",
+				"contentLength", r.ContentLength,
+				"remoteAddr", r.RemoteAddr,
+			)
+		}
+
 		// Wrap response writer to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		next.ServeHTTP(wrapped, r)
 
-		logger.Debug("HTTP request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", wrapped.statusCode,
-			"duration", time.Since(start),
-			"remoteAddr", r.RemoteAddr,
-		)
+		// Skip logging for health checks to reduce log noise
+		if r.URL.Path != "/health" {
+			logger.Debug("HTTP request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", wrapped.statusCode,
+				"duration", time.Since(start),
+				"remoteAddr", r.RemoteAddr,
+			)
+		}
 	})
 }
 
