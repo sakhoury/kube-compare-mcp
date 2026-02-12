@@ -27,7 +27,7 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
 
 ## Overview
 
-This project provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that exposes the `kube-compare` tool functionality. It allows AI assistants like Claude, Cursor, OpenShift Lightspeed (OLS), and other MCP-compatible clients to:
+This project provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Kubernetes / OpenShift cluster compliance checking. It allows AI assistants like Claude, Cursor, OpenShift Lightspeed (OLS), and other MCP-compatible clients to:
 
 - Compare live Kubernetes cluster configurations against reference templates
 - Detect configuration drift from known-good baselines

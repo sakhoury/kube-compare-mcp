@@ -30,9 +30,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
 # Build the runtime image 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
-ENV SUMMARY="MCP server for kube-compare" \
-    DESCRIPTION="Model Context Protocol server that enables AI assistants to compare \
-Kubernetes cluster configurations against reference templates."
+ENV SUMMARY="MCP server for Kubernetes / OpenShift cluster compliance" \
+    DESCRIPTION="Model Context Protocol server for cluster configuration and bare metal BIOS compliance checking."
 
 LABEL name="kube-compare-mcp" \
       summary="${SUMMARY}" \
