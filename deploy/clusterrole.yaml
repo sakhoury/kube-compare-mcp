@@ -102,3 +102,27 @@ rules:
   - apiGroups: ["*"]
     resources: ["*"]
     verbs: ["get", "list", "watch"]
+  # --- ACM Policy Violation Detection ---
+  # Read access to ACM Policy resources
+  - apiGroups: ["policy.open-cluster-management.io"]
+    resources: ["policies", "configurationpolicies"]
+    verbs: ["get", "list", "watch"]
+  # Read access to admission webhooks (for conflict detection)
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+    verbs: ["get", "list"]
+  # Read access to Gatekeeper constraints (for conflict detection)
+  - apiGroups: ["constraints.gatekeeper.sh"]
+    resources: ["*"]
+    verbs: ["get", "list"]
+  # SelfSubjectAccessReview (for RBAC checking during root cause analysis)
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectaccessreviews"]
+    verbs: ["create"]
+  # Dry-run patch access (for mutability checking during root cause analysis)
+  # SECURITY NOTE: The patch verb is required for server-side dry-run only.
+  # All patch operations in the ACM tools use DryRun=All, so no actual
+  # modifications are made to cluster resources.
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["patch"]

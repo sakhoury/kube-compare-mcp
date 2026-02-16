@@ -29,15 +29,27 @@ func NewServer(version string) *mcp.Server {
 		nil,
 	)
 
+	// Comparison tools
 	mcp.AddTool(s, ClusterDiffTool(), HandleClusterDiff)
 	mcp.AddTool(s, ResolveRDSTool(), HandleResolveRDS)
 	mcp.AddTool(s, ValidateRDSTool(), HandleValidateRDS)
 	mcp.AddTool(s, BIOSDiffTool(), HandleBIOSDiff)
 
+	// ACM diagnostic tools
+	mcp.AddTool(s, InspectACMPolicyTool(), HandleInspectACMPolicy)
+	mcp.AddTool(s, DiagnoseACMPolicyTool(), HandleDiagnoseACMPolicy)
+
 	logger.Info("MCP server initialized",
 		"name", ServerName,
 		"version", version,
-		"tools", []string{"kube_compare_cluster_diff", "kube_compare_resolve_rds", "kube_compare_validate_rds", "baremetal_bios_diff"},
+		"tools", []string{
+			"kube_compare_cluster_diff",
+			"kube_compare_resolve_rds",
+			"kube_compare_validate_rds",
+			"baremetal_bios_diff",
+			"inspect_acm_policy",
+			"diagnose_acm_policy",
+		},
 	)
 
 	return s

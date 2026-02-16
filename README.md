@@ -1,6 +1,6 @@
 # kube-compare-mcp
 
-MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enables AI assistants to compare Kubernetes cluster configurations against reference templates.
+MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enables AI assistants to compare Kubernetes cluster configurations against reference templates and diagnose ACM policy violations.
 
 ## Table of Contents
 
@@ -15,9 +15,13 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
   - [kube_compare_resolve_rds](#kube_compare_resolve_rds)
   - [kube_compare_validate_rds](#kube_compare_validate_rds)
   - [baremetal_bios_diff](#baremetal_bios_diff)
+  - [inspect_acm_policy](#inspect_acm_policy)
+  - [diagnose_acm_policy](#diagnose_acm_policy)
+- [ACM Policy Diagnostics](#acm-policy-diagnostics)
 - [RDS Support](#rds-reference-design-specification-support)
 - [BIOS Reference Configurations](#bios-reference-configurations)
 - [Connecting to Remote Clusters](#connecting-to-remote-clusters)
+- [RAG Content](#rag-content)
 - [Reference Configuration Formats](#reference-configuration-formats)
 - [Output Formats](#output-formats)
 - [Configuration](#configuration)
@@ -27,13 +31,14 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
 
 ## Overview
 
-This project provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Kubernetes / OpenShift cluster compliance checking. It allows AI assistants like Claude, Cursor, OpenShift Lightspeed (OLS), and other MCP-compatible clients to:
+This project provides a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Kubernetes / OpenShift cluster compliance checking and ACM policy diagnostics. It allows AI assistants like Claude, Cursor, OpenShift Lightspeed (OLS), and other MCP-compatible clients to:
 
 - Compare live Kubernetes cluster configurations against reference templates
 - Detect configuration drift from known-good baselines
 - Generate structured comparison reports in JSON, YAML, or JUnit formats
 - **Automatically discover and use Red Hat Telco Reference Design Specifications (RDS)**
 - **Compare bare metal host BIOS settings against reference configurations for ZTP-provisioned clusters**
+- **Inspect and diagnose ACM policy violations with classified root causes and suggested next steps**
 
 **Note:** This server is designed for remote deployment (e.g., in a Kubernetes cluster). Reference configurations must be provided via HTTP/HTTPS URLs or OCI container image references - local filesystem paths are not supported.
 
@@ -54,10 +59,13 @@ flowchart TB
         ResolveRDS[kube_compare_resolve_rds]
         ValidateRDS[kube_compare_validate_rds]
         BIOSDiff[baremetal_bios_diff]
+        InspectPolicy[inspect_acm_policy]
+        DiagnosePolicy[diagnose_acm_policy]
     end
 
     subgraph external [External Resources]
         K8sCluster[Kubernetes Cluster]
+        ACMHub[ACM Hub Cluster]
         Registry[Container Registry<br/>registry.redhat.io]
         HTTPRef[HTTP References]
     end
@@ -70,6 +78,8 @@ flowchart TB
     Tools --> ResolveRDS
     Tools --> ValidateRDS
     Tools --> BIOSDiff
+    Tools --> InspectPolicy
+    Tools --> DiagnosePolicy
     Diff --> K8sCluster
     Diff --> Registry
     Diff --> HTTPRef
@@ -78,7 +88,11 @@ flowchart TB
     ValidateRDS --> Diff
     ValidateRDS --> ResolveRDS
     BIOSDiff --> K8sCluster
+    InspectPolicy --> ACMHub
+    DiagnosePolicy --> ACMHub
 ```
+
+See [docs/architecture.md](docs/architecture.md) for the full architecture document covering OLS integration, RAG pipeline, and diagnostic workflows.
 
 ## Quick Start
 
@@ -278,7 +292,7 @@ Configure your MCP client to connect to the server's endpoint:
 
 ## MCP Tools Reference
 
-The server exposes four MCP tools:
+The server exposes six MCP tools:
 
 ### kube_compare_cluster_diff
 
@@ -445,6 +459,112 @@ Check if host worker-0 in namespace my-cluster has compliant BIOS settings
 Validate BIOS configuration for all bare metal hosts in the spoke-cluster-1 namespace
 ```
 
+### inspect_acm_policy
+
+Quick extraction of ACM policy compliance status and raw violation messages from the hub cluster. This tool provides a lightweight status check; use `diagnose_acm_policy` for full diagnosis with classified violations.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `policy_name` | string | Yes | Name of the ACM Policy (root or propagated). For propagated policies, use the full dotted name (e.g., `ztp-common-cnfdf04.common-cnfdf04-subscriptions-policy`). |
+| `namespace` | string | No | Namespace of the Policy. If omitted, the tool searches all namespaces. |
+| `cluster` | string | No | Managed cluster name to filter violations. |
+
+**Response includes:**
+
+- Overall compliance state
+- Per-cluster compliance breakdown
+- Template names and kinds
+- Raw violation messages with basic classification (missing, drift, violation)
+- `next_step` instructions guiding the LLM to inspect violated resources on spoke clusters
+
+**Example prompts:**
+
+```
+Check the compliance status of policy common-cnfdf04-subscriptions-policy
+```
+
+```
+Show me the violations for ztp-common-cnfdf04.common-cnfdf04-subscriptions-policy
+```
+
+See [docs/tool-inspect-acm-policy.md](docs/tool-inspect-acm-policy.md) for full documentation.
+
+### diagnose_acm_policy
+
+Deep diagnosis of an ACM policy. Classifies each violation into a root cause category, extracts the desired state from ConfigurationPolicy templates, and returns structured JSON with a `suggested_tool_call` for the next investigation step.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `policy_name` | string | Yes | Name of the ACM Policy to diagnose (root or propagated). |
+| `namespace` | string | No | Namespace of the Policy. If omitted, the tool searches all namespaces. |
+| `cluster` | string | No | Managed cluster name to focus the diagnosis on. |
+
+**Violation types:**
+
+| Type | Meaning |
+|------|---------|
+| `resource_missing` | A resource required by the policy does not exist on the cluster |
+| `resource_drift` | A resource exists but its configuration does not match the policy |
+| `olm_stuck` | An OLM-managed operator (Subscription, CSV, InstallPlan) is not progressing |
+| `unknown` | Violation could not be automatically classified |
+
+**Each diagnosed issue includes:**
+
+- Violation type classification
+- Affected resource kind, name, and namespace
+- Raw violation message (truncated to 300 chars)
+- Desired state extracted from the ConfigurationPolicy template
+- `suggested_tool_call` pointing to the appropriate next tool (e.g., `resources_get` on the spoke cluster or `trace_olm_subscription`)
+
+**Example prompts:**
+
+```
+Diagnose why policy common-cnfdf04-subscriptions-policy is NonCompliant
+```
+
+```
+What's wrong with the ztp-common policy on cluster cnfdf04?
+```
+
+See [docs/tool-diagnose-acm-policy.md](docs/tool-diagnose-acm-policy.md) for full documentation.
+
+## ACM Policy Diagnostics
+
+The ACM diagnostic tools (`inspect_acm_policy` and `diagnose_acm_policy`) work with Red Hat Advanced Cluster Management (ACM) policies on the hub cluster. They support both root policies and propagated policies.
+
+### How It Works
+
+1. The tool resolves the policy by name, auto-discovering the namespace if not provided
+2. It reads the policy's `status.status` to identify non-compliant clusters
+3. For each non-compliant cluster, it fetches the propagated policy from the cluster's namespace
+4. It parses violation messages from the policy's `status.details` and `history`
+5. `diagnose_acm_policy` additionally classifies violations, extracts desired state from ConfigurationPolicy templates, and generates tool call suggestions
+
+### Propagated Policy Names
+
+ACM propagates policies to managed cluster namespaces using a dotted naming convention:
+
+```
+<root-namespace>.<root-policy-name>
+```
+
+For example, root policy `common-cnfdf04-subscriptions-policy` in namespace `ztp-common` becomes `ztp-common.common-cnfdf04-subscriptions-policy` in the managed cluster namespace.
+
+Both tools accept either format and auto-resolve the namespace.
+
+### RBAC Requirements
+
+The MCP server's service account needs read access to ACM policy resources on the hub. The provided ClusterRole in `deploy/clusterrole.yaml` includes:
+
+```yaml
+- apiGroups: ["policy.open-cluster-management.io"]
+  resources: ["policies"]
+  verbs: ["get", "list"]
+- apiGroups: ["cluster.open-cluster-management.io"]
+  resources: ["managedclusters"]
+  verbs: ["get", "list"]
+```
+
 ## RDS (Reference Design Specification) Support
 
 This server includes specialized support for Red Hat's Telco Reference Design Specifications:
@@ -556,7 +676,7 @@ Reference ConfigMaps are **only** read from the MCP server's own cluster (via in
 
 ## Connecting to Remote Clusters
 
-All tools support connecting to remote clusters via kubeconfig. The format is auto-detected:
+All compliance tools support connecting to remote clusters via kubeconfig. The format is auto-detected:
 - **Raw YAML**: Paste your kubeconfig content directly
 - **Base64-encoded**: Traditional encoded format
 
@@ -663,6 +783,28 @@ The server implements several security measures when processing kubeconfigs:
 **Blocked authentication methods (security risk):**
 - Exec-based authentication (`users[].exec`)
 - Auth provider plugins (`users[].auth-provider`)
+
+## RAG Content
+
+The `rag-content/` directory contains diagnostic playbooks and tool reference documents optimized for retrieval-augmented generation. These are embedded into a FAISS vector database and served as a sidecar to OLS.
+
+```bash
+make rag-build-tool   # Build the embedding generation tool
+make rag-build        # Generate vector DB and build data image
+make rag-push         # Push to registry
+```
+
+Configure the RAG image in your OLSConfig:
+
+```yaml
+spec:
+  ols:
+    byokRAGOnly: true
+    rag:
+    - image: quay.io/myuser/kube-compare-mcp:rag
+      indexID: vector_db_index
+      indexPath: /rag/vector_db
+```
 
 ## Reference Configuration Formats
 
@@ -833,7 +975,7 @@ make undeploy-examples
 ## Related Projects
 
 - [kube-compare](https://github.com/openshift/kube-compare) - The upstream comparison tool
-- [kubernetes-mcp-server](https://github.com/containers/kubernetes-mcp-server) - General Kubernetes MCP server
+- [openshift-mcp-server](https://github.com/openshift/openshift-mcp-server) - General Kubernetes/OpenShift MCP server with ACM managed cluster support
 - [go-sdk](https://github.com/modelcontextprotocol/go-sdk) - Official Go SDK for MCP
 - [OpenShift Lightspeed](https://docs.openshift.com/container-platform/latest/lightspeed/index.html) - AI-powered OpenShift assistant
 

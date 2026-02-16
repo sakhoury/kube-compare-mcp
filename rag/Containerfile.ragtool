@@ -1,0 +1,30 @@
+ARG UBI_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi:latest
+FROM ${UBI_BASE_IMAGE} AS builder
+RUN dnf install -y buildah python3.11 python3.11-pip
+
+USER 0
+WORKDIR /workdir
+
+COPY pyproject.toml .
+
+# ARG selects the pdm dependency group:
+#   cpu  = x86_64 wheel pinned to CPU-only PyTorch  (smaller, amd64 only)
+#   gpu  = generic torch==2.6.0 resolved per-platform (works on arm64)
+ARG PDM_GROUP=cpu
+RUN pip3.11 install pdm \
+    && pdm config python.use_venv false \
+    && pdm install --group "${PDM_GROUP}" --global --project .
+
+COPY embeddings_model ./embeddings_model
+
+ARG MODEL_SAFETENSORS_URL=https://huggingface.co/sentence-transformers/all-mpnet-base-v2/resolve/9a3225965996d404b775526de6dbfe85d3368642/model.safetensors
+RUN cd embeddings_model && curl -L -O "${MODEL_SAFETENSORS_URL}"
+
+COPY byok/generate_embeddings_tool.py .
+
+CMD python3.11 generate_embeddings_tool.py \
+    -i /markdown \
+    -emd embeddings_model \
+    -emn sentence-transformers/all-mpnet-base-v2 \
+    -o vector_db -id vector_db_index \
+    && cp -r vector_db /output

@@ -8,24 +8,39 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
+// makeOptionalFieldsNullable iterates over all properties in the schema and
+// makes non-required fields accept null values in addition to their declared type.
+// This is needed because LLM clients often send "field": null instead of omitting
+// optional fields, and the MCP SDK validates the JSON against the schema strictly.
+func makeOptionalFieldsNullable(schema *jsonschema.Schema) {
+	required := make(map[string]bool, len(schema.Required))
+	for _, r := range schema.Required {
+		required[r] = true
+	}
+
+	for name, prop := range schema.Properties {
+		if required[name] {
+			continue
+		}
+		if prop.Type != "" {
+			prop.Types = []string{prop.Type, "null"}
+			prop.Type = ""
+		}
+	}
+}
+
 // ClusterDiffInputSchema returns the JSON schema for ClusterDiffInput
 // with proper enum constraints for output_format.
-//
-// Note: These schema functions are called during NewServer() initialization,
-// before the server accepts any connections. A panic here fails fast at startup,
-// which is the correct behavior for schema generation errors.
 func ClusterDiffInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[ClusterDiffInput](nil)
 	if err != nil {
-		panic(err) // Fails at startup, not during request handling
+		panic(err)
 	}
-
-	// Add enum constraint for output_format
 	if prop, ok := schema.Properties["output_format"]; ok {
 		prop.Enum = []any{"json", "yaml", "junit"}
 		prop.Default = json.RawMessage(`"json"`)
 	}
-
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -34,14 +49,12 @@ func ClusterDiffInputSchema() *jsonschema.Schema {
 func ResolveRDSInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[ResolveRDSInput](nil)
 	if err != nil {
-		panic(err) // Fails at startup, not during request handling
+		panic(err)
 	}
-
-	// Add enum constraint for rds_type
 	if prop, ok := schema.Properties["rds_type"]; ok {
 		prop.Enum = []any{"core", "ran"}
 	}
-
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -50,20 +63,16 @@ func ResolveRDSInputSchema() *jsonschema.Schema {
 func ValidateRDSInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[ValidateRDSInput](nil)
 	if err != nil {
-		panic(err) // Fails at startup, not during request handling
+		panic(err)
 	}
-
-	// Add enum constraint for rds_type
 	if prop, ok := schema.Properties["rds_type"]; ok {
 		prop.Enum = []any{"core", "ran"}
 	}
-
-	// Add enum constraint for output_format
 	if prop, ok := schema.Properties["output_format"]; ok {
 		prop.Enum = []any{"json", "yaml", "junit"}
 		prop.Default = json.RawMessage(`"json"`)
 	}
-
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -75,33 +84,45 @@ const k8sNamePattern = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z
 func BIOSDiffInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[BIOSDiffInput](nil)
 	if err != nil {
-		panic(err) // Fails at startup, not during request handling
+		panic(err)
 	}
-
-	// Add pattern validation for Kubernetes resource names
 	if prop, ok := schema.Properties["namespace"]; ok {
 		prop.Pattern = k8sNamePattern
 	}
-
 	if prop, ok := schema.Properties["host_name"]; ok {
 		prop.Pattern = k8sNamePattern
 	}
-
 	if prop, ok := schema.Properties["reference_source"]; ok {
 		prop.Pattern = k8sNamePattern
 		prop.Default = json.RawMessage(`"reference-configs"`)
 	}
-
 	if prop, ok := schema.Properties["reference_override"]; ok {
 		prop.Pattern = k8sNamePattern
 	}
-
-	// Add enum constraint for output_format
 	if prop, ok := schema.Properties["output_format"]; ok {
 		prop.Enum = []any{"json", "yaml"}
 		prop.Default = json.RawMessage(`"json"`)
 	}
+	return schema
+}
 
+// InspectACMPolicyInputSchema returns the JSON schema for InspectACMPolicyInput.
+func InspectACMPolicyInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[InspectACMPolicyInput](nil)
+	if err != nil {
+		panic(err)
+	}
+	makeOptionalFieldsNullable(schema)
+	return schema
+}
+
+// DiagnoseACMPolicyInputSchema returns the JSON schema for DiagnoseACMPolicyInput.
+func DiagnoseACMPolicyInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[DiagnoseACMPolicyInput](nil)
+	if err != nil {
+		panic(err)
+	}
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -110,10 +131,8 @@ func BIOSDiffInputSchema() *jsonschema.Schema {
 func BIOSDiffOutputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[BIOSDiffResult](nil)
 	if err != nil {
-		panic(err) // Fails at startup, not during request handling
+		panic(err)
 	}
-
-	// Add descriptions to top-level fields for better AI understanding
 	if prop, ok := schema.Properties["Namespace"]; ok {
 		prop.Description = "The namespace that was compared"
 	}
@@ -123,6 +142,5 @@ func BIOSDiffOutputSchema() *jsonschema.Schema {
 	if prop, ok := schema.Properties["Summary"]; ok {
 		prop.Description = "Aggregate statistics across all hosts"
 	}
-
 	return schema
 }

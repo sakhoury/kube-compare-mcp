@@ -1,9 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
-# Build the kube-compare-mcp binary using Red Hat UBI Go Toolset
-FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
+# Build the kube-compare-mcp binary using Red Hat UBI Go Toolset.
+# The builder stage is pinned to BUILDPLATFORM so Go runs natively on the
+# host (e.g. linux/arm64 on Apple Silicon) and cross-compiles for each
+# TARGETARCH.  This avoids slow/broken qemu emulation of the Go toolchain.
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 
-ARG TARGETOS
+ARG TARGETOS=linux
 ARG TARGETARCH
 
 # UBI go-toolset uses /opt/app-root/src as the default working directory
@@ -20,14 +23,15 @@ COPY pkg/ pkg/
 # Build arguments for version info
 ARG VERSION=dev
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
+# Cross-compile the binary for the target platform
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags "-X main.version=${VERSION}" \
     -o build/kube-compare-mcp \
     ./cmd/kube-compare-mcp
 
 #####################################################################################################
-# Build the runtime image 
+# Runtime image — pulled for the TARGET platform so the base layer (glibc,
+# diffutils, etc.) matches the architecture the binary was compiled for.
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 ENV SUMMARY="MCP server for Kubernetes / OpenShift cluster compliance" \
