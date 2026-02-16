@@ -72,7 +72,7 @@ var (
 // BIOSDiffInput defines the typed input for the baremetal_bios_diff tool.
 // Field descriptions are optimized for AI assistant consumption.
 type BIOSDiffInput struct {
-	Kubeconfig        string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for the ACM hub cluster. If omitted, uses in-cluster config."`
+	Kubeconfig        string `json:"kubeconfig,omitempty" jsonschema:"Optional. Kubeconfig for the target cluster. Accepts a registered target key (secret_name/namespace from manage_targets) or base64-encoded kubeconfig or raw kubeconfig YAML. When omitted uses in-cluster or default config."`
 	Context           string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig."`
 	Namespace         string `json:"namespace" jsonschema:"Namespace on the hub cluster containing BareMetalHost resources to compare."`
 	HostName          string `json:"host_name,omitempty" jsonschema:"Specific host to compare. Omit to compare all hosts in the namespace."`
@@ -224,36 +224,10 @@ func HandleBIOSDiff(ctx context.Context, req *mcp.CallToolRequest, input BIOSDif
 		"context", input.Context,
 	)
 
-	// Build REST config
-	var restConfig *rest.Config
-	var err error
-
-	if input.Kubeconfig != "" {
-		logger.Debug("Using provided kubeconfig for hub cluster connection",
-			"kubeconfigLength", len(input.Kubeconfig),
-		)
-
-		kubeconfigData, err := DecodeOrParseKubeconfig(input.Kubeconfig)
-		if err != nil {
-			logger.Debug("Kubeconfig parsing failed", "error", err)
-			return newToolResultError(formatErrorForUser(err)), nil, nil
-		}
-
-		restConfig, err = BuildSecureRestConfigFromBytes(kubeconfigData, input.Context)
-		if err != nil {
-			logger.Debug("Failed to build REST config from kubeconfig", "error", err)
-			return newToolResultError(formatErrorForUser(err)), nil, nil
-		}
-	} else {
-		logger.Debug("Using in-cluster config for hub cluster connection")
-		restConfig, err = rest.InClusterConfig()
-		if err != nil {
-			err = NewCompareError("cluster-config",
-				fmt.Errorf("failed to get in-cluster config: %w", err),
-				"No kubeconfig provided and in-cluster config not available. "+
-					"Provide a kubeconfig for the hub cluster.")
-			return newToolResultError(formatErrorForUser(err)), nil, nil
-		}
+	// Build REST config using the unified resolver (supports target keys, raw YAML, base64, in-cluster).
+	restConfig, err := ResolveKubeconfig(ctx, input.Kubeconfig, input.Context, logger)
+	if err != nil {
+		return newToolResultError(formatErrorForUser(err)), nil, nil
 	}
 
 	// Create dynamic client for hub cluster (target workload data only)

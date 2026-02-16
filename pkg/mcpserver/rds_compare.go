@@ -4,7 +4,6 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -22,7 +21,7 @@ type ValidateRDSResult struct {
 
 // ValidateRDSInput defines the typed input for the kube_compare_validate_rds tool.
 type ValidateRDSInput struct {
-	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
+	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Optional. Kubeconfig for the target cluster. Accepts a registered target key (secret_name/namespace from manage_targets) or base64-encoded kubeconfig or raw kubeconfig YAML. When omitted uses in-cluster or default config."`
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 	RDSType      string `json:"rds_type" jsonschema:"RDS type to compare against: core for Telco Core RDS or ran for Telco RAN DU RDS"`
 	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for the comparison results"`
@@ -93,19 +92,9 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 
 	// Note: SDK validates enum constraint, so RDSType is already lowercase ("core" or "ran")
 
-	// Auto-detect and process kubeconfig format
-	kubeconfigData, err := DecodeOrParseKubeconfig(input.Kubeconfig)
-	if err != nil {
-		logger.Debug("Failed to parse kubeconfig", "error", err)
-		return newToolResultError(formatErrorForUser(err)), ValidateRDSOutput{}, nil
-	}
-
-	var kubeconfig string
-	if kubeconfigData != nil {
-		// Convert to base64 for internal storage
-		kubeconfig = base64.StdEncoding.EncodeToString(kubeconfigData)
-		logger.Debug("Kubeconfig auto-detected and processed", "size", len(kubeconfigData))
-	}
+	// Pass kubeconfig as-is; downstream functions (ResolveRDS, RunCompare) handle
+	// all formats (target ref, raw YAML, base64, empty) via ResolveKubeconfig.
+	kubeconfig := input.Kubeconfig
 
 	logger.Debug("Parsed kube_compare_validate_rds arguments",
 		"rdsType", input.RDSType,

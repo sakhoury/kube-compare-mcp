@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"k8s.io/client-go/rest"
 )
 
 var (
@@ -77,7 +76,7 @@ var defaultReferenceService = NewReferenceService()
 
 // ResolveRDSInput defines the typed input for the kube_compare_resolve_rds tool.
 type ResolveRDSInput struct {
-	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
+	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Optional. Kubeconfig for the target cluster. Accepts a registered target key (secret_name/namespace from manage_targets) or base64-encoded kubeconfig or raw kubeconfig YAML. When omitted uses in-cluster or default config."`
 	Context    string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 	RDSType    string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS or ran for Telco RAN DU RDS"`
 	OCPVersion string `json:"ocp_version,omitempty" jsonschema:"OpenShift version (e.g. 4.18 or 4.20.0)"`
@@ -193,31 +192,9 @@ func (s *ReferenceService) ResolveRDS(ctx context.Context, args *ResolveRDSArgs)
 		clusterVersion = args.OCPVersion
 		logger.Debug("Using explicit OCP version", "ocpVersion", clusterVersion)
 	} else {
-		var restConfig *rest.Config
-		var err error
-
-		if args.Kubeconfig != "" {
-			logger.Debug("Using provided kubeconfig for version detection")
-
-			// Use DecodeOrParseKubeconfig to support both raw YAML and base64-encoded kubeconfig
-			kubeconfigData, err := DecodeOrParseKubeconfig(args.Kubeconfig)
-			if err != nil {
-				return nil, err
-			}
-
-			restConfig, err = BuildSecureRestConfigFromBytes(kubeconfigData, args.Context)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			logger.Debug("Using in-cluster config for version detection")
-			restConfig, err = rest.InClusterConfig()
-			if err != nil {
-				return nil, NewCompareError("cluster-config",
-					fmt.Errorf("failed to get in-cluster config: %w", err),
-					"No kubeconfig provided and in-cluster config not available. "+
-						"Either provide a kubeconfig, specify ocp_version explicitly, or ensure the server is running inside a Kubernetes cluster.")
-			}
+		restConfig, err := ResolveKubeconfig(ctx, args.Kubeconfig, args.Context, logger)
+		if err != nil {
+			return nil, err
 		}
 
 		// Get cluster version using the injected factory
