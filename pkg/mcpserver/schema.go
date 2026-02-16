@@ -8,6 +8,28 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
+// makeOptionalFieldsNullable iterates over all properties in the schema and
+// makes non-required fields accept null values in addition to their declared type.
+// This is needed because LLM clients often send "field": null instead of omitting
+// optional fields, and the MCP SDK validates the JSON against the schema strictly.
+func makeOptionalFieldsNullable(schema *jsonschema.Schema) {
+	required := make(map[string]bool, len(schema.Required))
+	for _, r := range schema.Required {
+		required[r] = true
+	}
+
+	for name, prop := range schema.Properties {
+		if required[name] {
+			continue
+		}
+		// If the property has a single Type, convert to Types with null.
+		if prop.Type != "" {
+			prop.Types = []string{prop.Type, "null"}
+			prop.Type = ""
+		}
+	}
+}
+
 // ClusterDiffInputSchema returns the JSON schema for ClusterDiffInput
 // with proper enum constraints for output_format.
 //
@@ -26,6 +48,7 @@ func ClusterDiffInputSchema() *jsonschema.Schema {
 		prop.Default = json.RawMessage(`"json"`)
 	}
 
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -42,6 +65,7 @@ func ResolveRDSInputSchema() *jsonschema.Schema {
 		prop.Enum = []any{"core", "ran"}
 	}
 
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -64,6 +88,52 @@ func ValidateRDSInputSchema() *jsonschema.Schema {
 		prop.Default = json.RawMessage(`"json"`)
 	}
 
+	makeOptionalFieldsNullable(schema)
+	return schema
+}
+
+// DetectViolationsInputSchema returns the JSON schema for DetectViolationsInput
+// with proper enum constraints for severity.
+func DetectViolationsInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[DetectViolationsInput](nil)
+	if err != nil {
+		panic(err) // Fails at startup, not during request handling
+	}
+
+	// Add enum constraint for severity filter
+	if prop, ok := schema.Properties["severity"]; ok {
+		prop.Enum = []any{"low", "medium", "high", "critical"}
+	}
+
+	makeOptionalFieldsNullable(schema)
+	return schema
+}
+
+// DiagnoseViolationInputSchema returns the JSON schema for DiagnoseViolationInput.
+func DiagnoseViolationInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[DiagnoseViolationInput](nil)
+	if err != nil {
+		panic(err) // Fails at startup, not during request handling
+	}
+
+	makeOptionalFieldsNullable(schema)
+	return schema
+}
+
+// ManageTargetsInputSchema returns the JSON schema for ManageTargetsInput
+// with proper enum constraints for action.
+func ManageTargetsInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[ManageTargetsInput](nil)
+	if err != nil {
+		panic(err) // Fails at startup, not during request handling
+	}
+
+	// Add enum constraint for action
+	if prop, ok := schema.Properties["action"]; ok {
+		prop.Enum = []any{"list", "add", "remove", "discover"}
+	}
+
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 

@@ -11,10 +11,13 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
 - [Running the Server](#running-the-server)
 - [Deployment](#deployment)
 - [MCP Tools Reference](#mcp-tools-reference)
+  - [manage_targets](#manage_targets)
   - [kube_compare_cluster_diff](#kube_compare_cluster_diff)
   - [kube_compare_resolve_rds](#kube_compare_resolve_rds)
   - [kube_compare_validate_rds](#kube_compare_validate_rds)
   - [baremetal_bios_diff](#baremetal_bios_diff)
+  - [acm_detect_violations](#acm_detect_violations)
+  - [acm_diagnose_violation](#acm_diagnose_violation)
 - [RDS Support](#rds-reference-design-specification-support)
 - [BIOS Reference Configurations](#bios-reference-configurations)
 - [Connecting to Remote Clusters](#connecting-to-remote-clusters)
@@ -34,6 +37,7 @@ This project provides a [Model Context Protocol (MCP)](https://modelcontextproto
 - Generate structured comparison reports in JSON, YAML, or JUnit formats
 - **Automatically discover and use Red Hat Telco Reference Design Specifications (RDS)**
 - **Compare bare metal host BIOS settings against reference configurations for ZTP-provisioned clusters**
+- **Detect ACM policy violations and provide root cause analysis with remediation steps**
 
 **Note:** This server is designed for remote deployment (e.g., in a Kubernetes cluster). Reference configurations must be provided via HTTP/HTTPS URLs or OCI container image references - local filesystem paths are not supported.
 
@@ -50,26 +54,35 @@ flowchart TB
     subgraph server [kube-compare-mcp Server]
         Transport[Transport Layer<br/>stdio / http]
         Tools[MCP Tools]
+        Targets[manage_targets]
         Diff[kube_compare_cluster_diff]
         ResolveRDS[kube_compare_resolve_rds]
         ValidateRDS[kube_compare_validate_rds]
         BIOSDiff[baremetal_bios_diff]
+        ACMDetect[acm_detect_violations]
+        ACMDiagnose[acm_diagnose_violation]
     end
 
     subgraph external [External Resources]
         K8sCluster[Kubernetes Cluster]
         Registry[Container Registry<br/>registry.redhat.io]
         HTTPRef[HTTP References]
+        ManagedClusters[ACM Managed Clusters]
     end
 
     Cursor --> Transport
     Claude --> Transport
     OLS --> Transport
     Transport --> Tools
+    Tools --> Targets
     Tools --> Diff
     Tools --> ResolveRDS
     Tools --> ValidateRDS
     Tools --> BIOSDiff
+    Tools --> ACMDetect
+    Tools --> ACMDiagnose
+    Targets --> K8sCluster
+    Targets --> ManagedClusters
     Diff --> K8sCluster
     Diff --> Registry
     Diff --> HTTPRef
@@ -78,6 +91,8 @@ flowchart TB
     ValidateRDS --> Diff
     ValidateRDS --> ResolveRDS
     BIOSDiff --> K8sCluster
+    ACMDetect --> K8sCluster
+    ACMDiagnose --> K8sCluster
 ```
 
 ## Quick Start
@@ -278,7 +293,40 @@ Configure your MCP client to connect to the server's endpoint:
 
 ## MCP Tools Reference
 
-The server exposes four MCP tools:
+The server exposes seven MCP tools:
+
+### manage_targets
+
+Register, list, remove, and discover cluster kubeconfigs for use by all tools. Instead of passing raw kubeconfig content to every tool call, register clusters once and reference them by key.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | Yes | Action to perform: `list`, `add`, `remove`, or `discover`. |
+| `target` | string | Conditional | For `add`/`remove`: `secret_name/namespace`. For `discover`: the hub kubeconfig target key. |
+| `cluster` | string | No | For `discover` only: specific managed cluster name to discover. |
+
+**Actions:**
+
+- **`list`** — Returns all registered targets with their keys, sources, and timestamps.
+- **`add`** — Registers a Kubernetes Secret-backed kubeconfig. The secret must contain a `kubeconfig` data key.
+- **`remove`** — Unregisters a target (does not delete the underlying secret).
+- **`discover`** — Connects to an ACM hub and extracts kubeconfigs for managed clusters via ClusterDeployment secrets.
+
+**Example prompts:**
+
+```
+Register my hub cluster kubeconfig from secret hub1 in namespace david
+```
+
+```
+Discover all managed clusters from my hub
+```
+
+```
+List all registered target clusters
+```
+
+> See [manage_targets documentation](docs/manage-targets.md) for full details on actions, workflows, and responses.
 
 ### kube_compare_cluster_diff
 
@@ -289,7 +337,7 @@ Detect configuration drift between a Kubernetes/OpenShift cluster and a referenc
 | `reference` | string | Yes | URL to the reference configuration `metadata.yaml` file. Supports HTTP/HTTPS URLs or container image references (`container://image:tag:/path/to/metadata.yaml`). |
 | `output_format` | string | No | Output format: `json`, `yaml`, or `junit`. Default: `json`. |
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
-| `kubeconfig` | string | No | Kubeconfig content for connecting to a remote cluster (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config or KUBECONFIG env. |
+| `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded) or a registered target key from `manage_targets`. If not provided, uses in-cluster config or KUBECONFIG env. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. Only applicable when `kubeconfig` is provided. |
 
 **Example prompts:**
@@ -302,6 +350,10 @@ Compare my Kubernetes cluster against the reference configuration at https://exa
 Run kube-compare on my cluster using reference container://quay.io/openshift-kni/telco-core-rds-rhel9:v4.18:/metadata.yaml
 ```
 
+```
+Compare the cluster registered as spoke1 against the Telco Core RDS
+```
+
 ### kube_compare_resolve_rds
 
 Get the correct Red Hat Telco RDS container reference for a cluster's OpenShift version.
@@ -310,7 +362,7 @@ Get the correct Red Hat Telco RDS container reference for a cluster's OpenShift 
 |-----------|------|----------|-------------|
 | `rds_type` | string | Yes | RDS type: `core` for Telco Core RDS or `ran` for Telco RAN DU RDS. |
 | `ocp_version` | string | No | Explicit OpenShift version (e.g., `4.18`, `4.20.0`). If not provided, auto-detects from cluster. |
-| `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided and `ocp_version` is not set, uses in-cluster config. |
+| `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded) or a registered target key from `manage_targets`. If not provided and `ocp_version` is not set, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
 
 **Response:**
@@ -345,7 +397,7 @@ Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the r
 | `rds_type` | string | Yes | RDS type: `core` for Telco Core RDS or `ran` for Telco RAN DU RDS. |
 | `output_format` | string | No | Output format: `json`, `yaml`, or `junit`. Default: `json`. |
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
-| `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config. |
+| `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded) or a registered target key from `manage_targets`. If not provided, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
 
 **Response:**
@@ -388,7 +440,7 @@ Compare BIOS versions and settings of bare metal hosts against reference configu
 | `reference_source` | string | No | Namespace containing BIOS reference ConfigMaps. Default: `reference-configs`. |
 | `reference_override` | string | No | Explicit ConfigMap name to use, bypassing auto-matching by server model. |
 | `output_format` | string | No | Output format: `json` or `yaml`. Default: `json`. |
-| `kubeconfig` | string | No | Kubeconfig content for the ACM hub cluster (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config. |
+| `kubeconfig` | string | No | Kubeconfig content for the ACM hub cluster (raw YAML or base64-encoded) or a registered target key from `manage_targets`. If not provided, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. Only applicable when `kubeconfig` is provided. |
 
 **Response:**
@@ -444,6 +496,141 @@ Check if host worker-0 in namespace my-cluster has compliant BIOS settings
 ```
 Validate BIOS configuration for all bare metal hosts in the spoke-cluster-1 namespace
 ```
+
+### acm_detect_violations
+
+Scan an OpenShift/Kubernetes cluster for ACM (Advanced Cluster Management) policy violations. Returns a summary of all non-compliant policies with severity, affected clusters, and remediation action.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded) or a registered target key from `manage_targets`. If not provided, uses in-cluster config. |
+| `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
+| `namespace` | string | No | Filter policies by namespace. |
+| `severity` | string | No | Filter violations by minimum severity level: `low`, `medium`, `high`, or `critical`. |
+
+**Response:**
+
+```json
+{
+  "total_policies": 5,
+  "compliant": 3,
+  "non_compliant": 2,
+  "violations": [
+    {
+      "name": "require-resource-limits",
+      "namespace": "open-cluster-management",
+      "compliant": "NonCompliant",
+      "severity": "high",
+      "remediation_action": "inform",
+      "categories": ["CM Configuration Management"],
+      "affected_clusters": [
+        { "name": "local-cluster", "compliant": "NonCompliant" }
+      ]
+    }
+  ]
+}
+```
+
+**Example prompts:**
+
+```
+Scan my cluster for ACM policy violations
+```
+
+```
+Show me all critical ACM policy violations in the production namespace
+```
+
+### acm_diagnose_violation
+
+Deep analysis of a specific ACM policy violation. Performs root cause analysis (ownership detection, dependency validation, mutability check, conflict detection, event history) and generates remediation YAML with step-by-step instructions.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded) or a registered target key from `manage_targets`. |
+| `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
+| `policy_name` | string | Yes | Name of the ACM policy to diagnose. |
+| `policy_namespace` | string | No | Namespace of the ACM policy. If omitted, searches all namespaces. |
+
+**Root Cause Analysis:**
+
+The diagnosis tool performs a 5-step root cause analysis decision tree:
+
+1. **Ownership Analysis** — Checks `managedFields`, ownership annotations (ArgoCD, Helm, Flux), and `ownerReferences` to detect external controllers that may revert direct patches.
+2. **Dependency Validation** — Walks the policy's `objectDefinition` for resource references (`secretName`, `configMapRef`, `storageClassName`, etc.) and verifies they exist.
+3. **Mutability Check** — Performs a server-side dry-run patch to detect immutable fields, webhook denials, RBAC issues, or quota violations.
+4. **Conflict Detection** — Checks for conflicting ValidatingWebhookConfigurations, MutatingWebhookConfigurations, Gatekeeper constraints, and other ACM policies targeting the same resource.
+5. **Event History** — Analyzes recent Kubernetes events for warning signals.
+
+**Response:**
+
+```json
+{
+  "policy": {
+    "name": "require-resource-limits",
+    "namespace": "open-cluster-management",
+    "compliant": "NonCompliant",
+    "severity": "high",
+    "templates": [ ... ]
+  },
+  "violations": [
+    {
+      "template": { "kind": "LimitRange", "resource_name": "resource-limits" },
+      "resource": { "kind": "LimitRange", "name": "resource-limits", "exists": false },
+      "root_cause": {
+        "primary_cause": "resource_not_found",
+        "confidence": "high",
+        "detail": "The LimitRange/resource-limits resource does not exist"
+      },
+      "remediation": {
+        "direct_patch_works": true,
+        "patch_yaml": "apiVersion: v1\nkind: LimitRange\nmetadata:\n  name: resource-limits\n...",
+        "patch_source": "policy_object_definition",
+        "confidence": "high",
+        "steps": [
+          "Save the remediation YAML to a file (e.g., remediation.yaml)",
+          "Apply: kubectl apply -f remediation.yaml -n production",
+          "Verify the ACM policy becomes compliant after the change"
+        ]
+      }
+    }
+  ],
+  "summary": "Policy 'open-cluster-management/require-resource-limits' is NonCompliant with 1 object template(s) analyzed.\n- 1 violation(s) caused by: resource does not exist (needs to be created)"
+}
+```
+
+**Example prompts:**
+
+```
+Diagnose the ACM policy violation for require-resource-limits
+```
+
+```
+Why is the require-labels policy non-compliant? Provide root cause and remediation steps.
+```
+
+### Detailed Tool Documentation
+
+For in-depth documentation including full response schemas, workflows, and examples:
+
+- [manage_targets](docs/manage-targets.md) — Target cluster registration and discovery
+- [acm_detect_violations](docs/acm-detect-violations.md) — ACM policy violation scanning
+- [acm_diagnose_violation](docs/acm-diagnose-violation.md) — Root cause analysis and remediation
+- [Target Cluster Secrets](docs/target-cluster-secrets.md) — Creating Kubernetes secrets for cluster access
+
+### ACM Tools RBAC Requirements
+
+The ACM tools require additional RBAC permissions beyond the base read-only access. These are included in the `deploy/clusterrole.yaml`:
+
+| Permission | Purpose |
+|-----------|---------|
+| `get`, `list`, `watch` on `policy.open-cluster-management.io` policies | Read ACM policies and compliance status |
+| `get`, `list` on `admissionregistration.k8s.io` webhooks | Conflict detection with admission webhooks |
+| `get`, `list` on `constraints.gatekeeper.sh` resources | Conflict detection with Gatekeeper constraints |
+| `create` on `authorization.k8s.io` selfsubjectaccessreviews | RBAC permission checking during root cause analysis |
+| `patch` on `*/*` (dry-run only) | Mutability checking via server-side dry-run patches |
+
+> **Note:** The `patch` permission is used exclusively with `DryRun=All` — no actual modifications are made to cluster resources.
 
 ## RDS (Reference Design Specification) Support
 
@@ -556,7 +743,24 @@ Reference ConfigMaps are **only** read from the MCP server's own cluster (via in
 
 ## Connecting to Remote Clusters
 
-All tools support connecting to remote clusters via kubeconfig. The format is auto-detected:
+All tools support connecting to remote clusters. There are three ways to provide cluster access:
+
+### Using registered targets (recommended)
+
+Use the `manage_targets` tool to register clusters once and reference them by key in all other tools. See [manage_targets documentation](docs/manage-targets.md) for details.
+
+```
+# Register a cluster
+manage_targets(action="add", target="hub1/david")
+
+# Use it with any tool
+kube_compare_cluster_diff(kubeconfig="hub1/david", reference="...")
+acm_detect_violations(kubeconfig="hub1/david")
+```
+
+### Using inline kubeconfig
+
+Provide kubeconfig content directly as a tool parameter. The format is auto-detected:
 - **Raw YAML**: Paste your kubeconfig content directly
 - **Base64-encoded**: Traditional encoded format
 

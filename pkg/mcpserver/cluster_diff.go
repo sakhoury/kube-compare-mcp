@@ -45,7 +45,7 @@ type ClusterDiffInput struct {
 	Reference    string `json:"reference" jsonschema:"Reference configuration URL"`
 	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for comparison results"`
 	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
-	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to a remote cluster. If omitted, uses in-cluster config."`
+	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Optional. Kubeconfig for the target cluster. Accepts a registered target key (secret_name/namespace from manage_targets) or base64-encoded kubeconfig or raw kubeconfig YAML. When omitted uses in-cluster or default config."`
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
 }
 
@@ -697,14 +697,7 @@ func RunCompare(ctx context.Context, args *CompareArgs) (string, error) {
 	var configFlags *genericclioptions.ConfigFlags
 	if args.Kubeconfig != "" {
 		logger.Info("Using provided kubeconfig for cluster connection")
-
-		// Use DecodeOrParseKubeconfig to support both raw YAML and base64-encoded kubeconfig
-		kubeconfigData, err := DecodeOrParseKubeconfig(args.Kubeconfig)
-		if err != nil {
-			return "", err
-		}
-
-		restConfig, err := BuildSecureRestConfigFromBytes(kubeconfigData, args.Context)
+		restConfig, err := ResolveKubeconfig(ctx, args.Kubeconfig, args.Context, logger)
 		if err != nil {
 			return "", err
 		}

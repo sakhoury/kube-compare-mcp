@@ -3,6 +3,7 @@
 package mcpserver
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
@@ -407,4 +408,58 @@ func safeSuffix(s string, n int) string {
 		return s
 	}
 	return "..." + s[len(s)-n:]
+}
+
+// ResolveKubeconfig is the unified entry point for resolving a kubeconfig string
+// into a rest.Config. It supports all input formats used across the MCP server:
+//
+//  1. Registered target reference (e.g. "secret_name/namespace") — resolved from
+//     the target store via a Kubernetes Secret on the local cluster.
+//  2. Raw kubeconfig YAML — auto-detected and parsed directly.
+//  3. Base64-encoded kubeconfig — decoded and parsed.
+//  4. Empty string — falls back to in-cluster config.
+//
+// All paths run security validation (exec auth and auth provider blocking).
+func ResolveKubeconfig(ctx context.Context, kubeconfig, contextName string, logger *slog.Logger) (*rest.Config, error) {
+	// Check if the input is a registered target reference.
+	if target, ok := defaultTargetStore.Get(kubeconfig); ok {
+		// In-memory config from discovered managed clusters.
+		if target.RestConfig != nil {
+			logger.Info("Using in-memory kubeconfig for discovered cluster",
+				"key", kubeconfig,
+				"source", target.Source,
+			)
+			return target.RestConfig, nil
+		}
+		// Secret-backed target.
+		logger.Info("Resolving kubeconfig from registered target cluster secret",
+			"key", kubeconfig,
+			"secret", target.SecretName,
+			"namespace", target.Namespace,
+		)
+		return resolveTargetSecret(ctx, target.SecretName, target.Namespace)
+	}
+
+	// Auto-detect format: raw YAML, base64, or empty.
+	kubeconfigData, err := DecodeOrParseKubeconfig(kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if kubeconfigData != nil {
+		logger.Debug("Using provided kubeconfig")
+		encoded := base64.StdEncoding.EncodeToString(kubeconfigData)
+		return BuildSecureRestConfig(encoded, contextName)
+	}
+
+	// No kubeconfig provided — fall back to in-cluster config.
+	logger.Debug("Using in-cluster config")
+	restConfig, err := rest.InClusterConfig()
+	if err != nil {
+		return nil, NewCompareError("cluster-config",
+			fmt.Errorf("failed to get in-cluster config: %w", err),
+			"No kubeconfig provided and in-cluster config not available. "+
+				"Either provide a kubeconfig or ensure the server is running inside a Kubernetes cluster.")
+	}
+	return restConfig, nil
 }

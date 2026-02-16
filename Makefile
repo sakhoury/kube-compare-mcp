@@ -16,6 +16,7 @@ LDFLAGS := -ldflags "-X main.version=$(VERSION)"
 IMG ?= quay.io/$(USER)/kube-compare-mcp:$(VERSION)
 CONTAINER_TOOL ?= podman
 PLATFORM ?= linux/amd64
+PLATFORMS ?= linux/amd64,linux/arm64
 
 # Linter settings
 GOLANGCI_LINT_VERSION ?= v2.8.0
@@ -24,7 +25,7 @@ GOLANGCI_LINT_VERSION ?= v2.8.0
 .PHONY: all build build-darwin-arm64 build-darwin-amd64 build-linux-amd64 build-all
 .PHONY: clean install run
 .PHONY: test test-cover vet fmt lint lint-fix verify mod-tidy ensure-golangci-lint
-.PHONY: docker-build docker-push deploy undeploy setup-registry-credentials
+.PHONY: docker-build docker-build-multiarch docker-push docker-push-multiarch deploy undeploy setup-registry-credentials
 .PHONY: deploy-examples undeploy-examples
 .PHONY: help
 
@@ -109,16 +110,30 @@ verify: fmt vet lint test
 mod-tidy:
 	$(GO) mod tidy
 
-## docker-build: Build container image for target platform (default: linux/amd64)
+## docker-build: Build container image for a single platform (default: linux/amd64)
 docker-build:
 	$(CONTAINER_TOOL) build \
 		--platform $(PLATFORM) \
 		--build-arg VERSION=$(VERSION) \
 		-t $(IMG) .
 
-## docker-push: Push the container image to registry
+## docker-build-multiarch: Build a multi-arch manifest (linux/amd64 + linux/arm64)
+##   The builder stage runs natively on the host and cross-compiles Go for each
+##   target architecture, so no slow qemu emulation is needed.
+docker-build-multiarch:
+	-$(CONTAINER_TOOL) manifest rm $(IMG) 2>/dev/null
+	$(CONTAINER_TOOL) build \
+		--platform $(PLATFORMS) \
+		--build-arg VERSION=$(VERSION) \
+		--manifest $(IMG) .
+
+## docker-push: Push a single-platform image to registry
 docker-push:
 	$(CONTAINER_TOOL) push $(IMG)
+
+## docker-push-multiarch: Push the multi-arch manifest to registry
+docker-push-multiarch:
+	$(CONTAINER_TOOL) manifest push --all $(IMG) docker://$(IMG)
 
 ## deploy: Deploy to OpenShift using kustomize
 deploy:
@@ -162,18 +177,24 @@ help:
 	@echo "Variables:"
 	@echo "  IMG                    Container image (default: quay.io/\$$(USER)/kube-compare-mcp:\$$(VERSION))"
 	@echo "  CONTAINER_TOOL         Container tool (default: podman, can use docker)"
-	@echo "  PLATFORM               Target platform for container build (default: linux/amd64)"
+	@echo "  PLATFORM               Target platform for single-arch build (default: linux/amd64)"
+	@echo "  PLATFORMS              Target platforms for multi-arch build (default: linux/amd64,linux/arm64)"
 	@echo "  GOLANGCI_LINT_VERSION  golangci-lint version (default: $(GOLANGCI_LINT_VERSION))"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make verify                                                    # Run all checks"
 	@echo "  make run                                                       # Run server locally"
-	@echo "  make docker-build IMG=quay.io/myuser/kube-compare-mcp:v1.0.0   # Build container image"
-	@echo "  make docker-push IMG=quay.io/myuser/kube-compare-mcp:v1.0.0    # Push to registry"
+	@echo "  make docker-build IMG=quay.io/myuser/kube-compare-mcp:v1.0.0   # Build single-arch image"
+	@echo "  make docker-build-multiarch IMG=quay.io/myuser/kube-compare-mcp:v1.0.0  # Build multi-arch manifest"
+	@echo "  make docker-push IMG=quay.io/myuser/kube-compare-mcp:v1.0.0    # Push single-arch image"
+	@echo "  make docker-push-multiarch IMG=quay.io/myuser/kube-compare-mcp:v1.0.0   # Push multi-arch manifest"
 	@echo "  make deploy IMG=quay.io/myuser/kube-compare-mcp:v1.0.0         # Deploy to cluster"
 	@echo ""
-	@echo "Full deployment workflow (build, push, deploy, configure registry):"
+	@echo "Full deployment workflow (single-arch, build, push, deploy, configure registry):"
 	@echo "  make docker-build docker-push deploy setup-registry-credentials IMG=quay.io/myuser/kube-compare-mcp:latest"
+	@echo ""
+	@echo "Full deployment workflow (multi-arch, build, push, deploy, configure registry):"
+	@echo "  make docker-build-multiarch docker-push-multiarch deploy setup-registry-credentials IMG=quay.io/myuser/kube-compare-mcp:latest"
 	@echo ""
 	@echo "Deploy example BIOS reference configs:"
 	@echo "  make deploy-examples                                            # Deploy example ConfigMaps"
