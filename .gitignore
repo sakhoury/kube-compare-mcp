@@ -77,3 +77,7 @@ CLAUDE.md
 
 # Test output directories
 .out/
+
+# RAG build artifacts
+.rag-build/
+rag-output/
