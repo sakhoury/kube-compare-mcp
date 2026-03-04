@@ -1,0 +1,3 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+COPY vector_db /rag/vector_db/
+USER 65532:65532
