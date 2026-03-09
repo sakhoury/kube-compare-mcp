@@ -6,7 +6,7 @@ toolchain go1.25.7
 
 require (
 	github.com/adrg/strutil v0.3.1
-	github.com/google/go-containerregistry v0.21.1
+	github.com/google/go-containerregistry v0.21.2
 	github.com/google/jsonschema-go v0.4.2
 	github.com/modelcontextprotocol/go-sdk v1.3.1
 	github.com/onsi/ginkgo/v2 v2.28.1
