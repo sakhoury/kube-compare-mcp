@@ -6,6 +6,7 @@ toolchain go1.25.7
 
 require (
 	github.com/adrg/strutil v0.3.1
+	github.com/google/go-cmp v0.7.0
 	github.com/google/go-containerregistry v0.21.1
 	github.com/google/jsonschema-go v0.4.2
 	github.com/modelcontextprotocol/go-sdk v1.3.1
@@ -48,7 +49,6 @@ require (
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20260115054156-294ebfa9ad83 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gosimple/slug v1.15.0 // indirect
