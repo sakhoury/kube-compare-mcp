@@ -15,6 +15,7 @@ MCP server for [kube-compare](https://github.com/openshift/kube-compare) - enabl
   - [kube_compare_resolve_rds](#kube_compare_resolve_rds)
   - [kube_compare_validate_rds](#kube_compare_validate_rds)
   - [baremetal_bios_diff](#baremetal_bios_diff)
+  - [kube_compare_rds_version_diff](#kube_compare_rds_version_diff)
 - [RDS Support](#rds-reference-design-specification-support)
 - [BIOS Reference Configurations](#bios-reference-configurations)
 - [Connecting to Remote Clusters](#connecting-to-remote-clusters)
@@ -54,6 +55,7 @@ flowchart TB
         ResolveRDS[kube_compare_resolve_rds]
         ValidateRDS[kube_compare_validate_rds]
         BIOSDiff[baremetal_bios_diff]
+        RDSVersionDiff[kube_compare_rds_version_diff]
     end
 
     subgraph external [External Resources]
@@ -70,6 +72,7 @@ flowchart TB
     Tools --> ResolveRDS
     Tools --> ValidateRDS
     Tools --> BIOSDiff
+    Tools --> RDSVersionDiff
     Diff --> K8sCluster
     Diff --> Registry
     Diff --> HTTPRef
@@ -278,7 +281,7 @@ Configure your MCP client to connect to the server's endpoint:
 
 ## MCP Tools Reference
 
-The server exposes four MCP tools:
+The server exposes five MCP tools:
 
 ### kube_compare_cluster_diff
 
@@ -443,6 +446,28 @@ Check if host worker-0 in namespace my-cluster has compliant BIOS settings
 
 ```
 Validate BIOS configuration for all bare metal hosts in the spoke-cluster-1 namespace
+```
+
+### kube_compare_rds_version_diff
+
+Compare RDS (telco reference) configuration between two versions. Accepts two full GitHub tree URLs (old and new), downloads the telco-reference sources, runs the PolicyGenerator binary (path from `POLICY_GENERATOR_BINARY_PATH` env, set in the container image) to generate policies, then extracts CRs and reports differences. All artifacts are stored under a session directory whose path is returned in the result.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `old_version_url` | string | Yes | Full GitHub tree URL for the older version, e.g. `https://github.com/openshift-kni/telco-reference/tree/konflux-telco-core-rds-4-18/telco-ran/configuration`. |
+| `new_version_url` | string | Yes | Full GitHub tree URL for the newer version, e.g. `https://github.com/openshift-kni/telco-reference/tree/konflux-telco-core-rds-4-20/telco-ran/configuration`. |
+| `work_dir` | string | No | Base directory for session artifacts. Default: `RDS_DIFF_WORK_DIR` env or OS temp dir. |
+
+**Response:** Summary text, diff report snippet, and **Artifacts path:** pointing to the session directory (containing `old/`, `new/`, `diff-report.txt`, `comparison.json`, etc.).
+
+**Example prompts:**
+
+```
+Compare RDS configuration between telco-reference 4.18 and 4.20 using GitHub URLs
+```
+
+```
+Run RDS version diff for https://github.com/openshift-kni/telco-reference/tree/konflux-telco-core-rds-4-18/telco-ran/configuration and https://github.com/openshift-kni/telco-reference/tree/konflux-telco-core-rds-4-20/telco-ran/configuration
 ```
 
 ## RDS (Reference Design Specification) Support
@@ -732,6 +757,7 @@ The server behavior can be customized using environment variables:
 | `KUBE_COMPARE_MCP_IMAGE_PULL_TIMEOUT` | Timeout for pulling container images (Go duration string) | `5m` |
 | `KUBE_COMPARE_MCP_HTTP_VALIDATION_TIMEOUT` | Timeout for validating HTTP/HTTPS reference URLs (Go duration string) | `10s` |
 | `KUBE_COMPARE_MCP_OCI_VALIDATION_TIMEOUT` | Timeout for validating OCI container image references (Go duration string) | `30s` |
+| `RDS_DIFF_WORK_DIR` | Base directory for RDS version diff session artifacts (downloads, generated policies, reports). If unset, uses OS temp dir. | (OS temp) |
 
 **Example:**
 
