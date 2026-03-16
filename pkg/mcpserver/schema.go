@@ -126,3 +126,12 @@ func BIOSDiffOutputSchema() *jsonschema.Schema {
 
 	return schema
 }
+
+// RDSVersionDiffInputSchema returns the JSON schema for RDSVersionDiffInput.
+func RDSVersionDiffInputSchema() *jsonschema.Schema {
+	schema, err := jsonschema.For[RDSVersionDiffInput](nil)
+	if err != nil {
+		panic(err) // Fails at startup, not during request handling
+	}
+	return schema
+}
