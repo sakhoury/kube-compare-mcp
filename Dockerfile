@@ -26,8 +26,10 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build \
     -o build/kube-compare-mcp \
     ./cmd/kube-compare-mcp
 
-#####################################################################################################
-# Build the runtime image 
+# PolicyGenerator binary from ACM image. Build must have access to registry.redhat.io (e.g. podman login).
+FROM registry.redhat.io/rhacm2/multicluster-operators-subscription-rhel9:v2.16 AS policygen-extract
+
+# Build the runtime image
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 ENV SUMMARY="MCP server for Kubernetes / OpenShift cluster compliance" \
@@ -40,13 +42,19 @@ LABEL name="kube-compare-mcp" \
       io.k8s.description="${DESCRIPTION}" \
       io.openshift.tags="kubernetes,mcp,kube-compare,ai"
 
-# Install diff utility which is required by kube-compare
-RUN microdnf install -y diffutils --nodocs && \
+# Install diff utility which is required by kube-compare.
+# Use only UBI repos (disable rhel-* repos that require subscription and return 403).
+RUN microdnf install -y --disablerepo='rhel-*' diffutils --nodocs && \
     microdnf clean all
 
 COPY --from=builder \
     /opt/app-root/src/build/kube-compare-mcp \
     /usr/local/bin/
+
+# PolicyGenerator binary for RDS version diff (from ACM image)
+COPY --from=policygen-extract /policy-generator/PolicyGenerator-rhel8 /usr/local/bin/PolicyGenerator-rhel8
+RUN chmod 755 /usr/local/bin/PolicyGenerator-rhel8
+ENV POLICY_GENERATOR_BINARY_PATH=/usr/local/bin/PolicyGenerator-rhel8
 
 # Copy the license
 COPY LICENSE /licenses/LICENSE
