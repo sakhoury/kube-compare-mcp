@@ -9,6 +9,7 @@ resources:
   - serviceaccount.yaml
   - clusterrole.yaml
   - clusterrolebinding.yaml
+  - pvc.yaml
   - deployment.yaml
   - service.yaml
   - route.yaml

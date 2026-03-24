@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# PersistentVolumeClaim for RDS version diff session artifacts.
+# Session dirs (downloads, generated policies, reports) persist across pod restarts.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rds-diff-artifacts
+  namespace: kube-compare-mcp
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName optional; use cluster default if omitted

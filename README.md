@@ -180,6 +180,7 @@ kubectl apply -k deploy/
 
 This creates:
 - A Deployment running the MCP server with HTTP transport
+- A PersistentVolumeClaim (`rds-diff-artifacts`, 5Gi) for RDS version diff session artifacts, mounted at `/var/rds-diff-artifacts` so sessions persist across pod restarts and are served at `GET /artifacts/<artifact_id>/...`
 - A Service exposing the MCP server
 - A Route (OpenShift) for external access
 - RBAC resources for cluster read access
@@ -458,7 +459,14 @@ Compare RDS (telco reference) configuration between two versions. Accepts two fu
 | `new_version_url` | string | Yes | Full GitHub tree URL for the newer version, e.g. `https://github.com/openshift-kni/telco-reference/tree/konflux-telco-core-rds-4-20/telco-ran/configuration`. |
 | `work_dir` | string | No | Base directory for session artifacts. Default: `RDS_DIFF_WORK_DIR` env or OS temp dir. |
 
-**Response:** Summary text, diff report snippet, and **Artifacts path:** pointing to the session directory (containing `old/`, `new/`, `diff-report.txt`, `comparison.json`, etc.).
+**Response:** Summary text, diff report snippet, **artifact_id** (session directory name), **Artifacts path** (server-local path), and when running over HTTP you can download all generated files at `GET <mcp-base-url>/artifacts/<artifact_id>/...`. Key paths under the session:
+
+- `diff-report.txt`, `comparison.json` — reports
+- `old/`, `new/` — downloaded RDS references
+- `old/generated/`, `new/generated/` — PolicyGenerator output
+- `old-extracted/`, `new-extracted/` — normalized CRs used for diff
+
+If `RDS_ARTIFACTS_BASE_URL` is set, the response also includes **artifacts_base_url** with full URLs. In Kubernetes, use the same Route (or Ingress) host as for MCP; session dirs persist when `RDS_DIFF_WORK_DIR` is set to a PVC mount (see [Configuration](#configuration)).
 
 **Example prompts:**
 
@@ -469,6 +477,14 @@ Compare RDS configuration between telco-reference 4.18 and 4.20 using GitHub URL
 ```
 Run RDS version diff for https://github.com/openshift-kni/telco-reference/tree/konflux-telco-core-rds-4-18/telco-ran/configuration and https://github.com/openshift-kni/telco-reference/tree/konflux-telco-core-rds-4-20/telco-ran/configuration
 ```
+
+**Accessing artifacts over HTTP:** When the server runs with HTTP transport, the tool response includes an **artifact_id** (e.g. `rds-diff-abc123-1710512345`). Download files using the same base URL as MCP:
+
+- `GET <base>/artifacts/<artifact_id>/diff-report.txt` — text diff report
+- `GET <base>/artifacts/<artifact_id>/comparison.json` — full comparison JSON
+- `GET <base>/artifacts/<artifact_id>/old/` and `.../new/` — browsable RDS sources and generated CRs
+
+Example: if the MCP server is at `https://mcp.example.com`, then `https://mcp.example.com/artifacts/rds-diff-abc123-1710512345/diff-report.txt` returns the report. The deploy includes a PVC so session dirs persist across pod restarts (see [Deployment](#deployment)).
 
 ## RDS (Reference Design Specification) Support
 
@@ -757,7 +773,8 @@ The server behavior can be customized using environment variables:
 | `KUBE_COMPARE_MCP_IMAGE_PULL_TIMEOUT` | Timeout for pulling container images (Go duration string) | `5m` |
 | `KUBE_COMPARE_MCP_HTTP_VALIDATION_TIMEOUT` | Timeout for validating HTTP/HTTPS reference URLs (Go duration string) | `10s` |
 | `KUBE_COMPARE_MCP_OCI_VALIDATION_TIMEOUT` | Timeout for validating OCI container image references (Go duration string) | `30s` |
-| `RDS_DIFF_WORK_DIR` | Base directory for RDS version diff session artifacts (downloads, generated policies, reports). If unset, uses OS temp dir. | (OS temp) |
+| `RDS_DIFF_WORK_DIR` | Base directory for RDS version diff session artifacts (downloads, generated policies, reports). In Kubernetes deploy, set to the PVC mount path (e.g. `/var/rds-diff-artifacts`) so artifacts persist across restarts and are served at `GET /artifacts/<artifact_id>/...`. If unset, uses OS temp dir. | (OS temp) |
+| `RDS_ARTIFACTS_BASE_URL` | Optional. When set (e.g. `https://mcp.example.com`), the RDS version diff tool returns full artifact URLs in the response (`artifacts_base_url` and links). Must be the same host that serves `/artifacts/`. | (unset) |
 
 **Example:**
 

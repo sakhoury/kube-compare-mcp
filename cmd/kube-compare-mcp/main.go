@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/sakhoury/kube-compare-mcp/pkg/mcpserver"
+	"github.com/sakhoury/kube-compare-mcp/pkg/rdsdiff"
 )
 
 var version = "dev"
@@ -119,6 +121,13 @@ func runHTTPServer(s *mcp.Server, port int, logger *slog.Logger) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// Artifacts: serve RDS version diff session files at GET /artifacts/<session-id>/...
+	workDir := os.Getenv("RDS_DIFF_WORK_DIR")
+	if workDir == "" {
+		workDir = os.TempDir()
+	}
+	mux.Handle("/artifacts/", artifactsHandler(workDir))
+
 	// MCP endpoint handled by the Streamable HTTP handler
 	streamHandler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)
 	mux.Handle("/mcp", streamHandler)
@@ -155,6 +164,63 @@ func runHTTPServer(s *mcp.Server, port int, logger *slog.Logger) {
 		os.Exit(1)
 	}
 	logger.Info("Server stopped")
+}
+
+// artifactsHandler returns an http.Handler that serves session files under GET /artifacts/<session-id>/...
+// workDir is the RDS_DIFF_WORK_DIR (or OS temp). Path traversal is prevented via rdsdiff.ResolveSessionPath.
+func artifactsHandler(workDir string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/artifacts")
+		path = strings.TrimPrefix(path, "/")
+		if path == "" {
+			http.Error(w, "missing session id", http.StatusBadRequest)
+			return
+		}
+		firstSlash := strings.Index(path, "/")
+		var sessionID, subpath string
+		if firstSlash < 0 {
+			sessionID = path
+			subpath = ""
+		} else {
+			sessionID = path[:firstSlash]
+			subpath = path[firstSlash+1:]
+		}
+		sessionPath, err := rdsdiff.ResolveSessionPath(workDir, sessionID)
+		if err != nil {
+			if errors.Is(err, rdsdiff.ErrInvalidSessionID) {
+				http.Error(w, "invalid session id", http.StatusBadRequest)
+				return
+			}
+			if os.IsNotExist(err) {
+				http.Error(w, "session not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// Serve from sessionPath; request path becomes subpath (or "/" for directory listing)
+		r2 := r.Clone(r.Context())
+		r2.URL = cloneURL(r.URL)
+		if subpath != "" {
+			r2.URL.Path = "/" + subpath
+		} else {
+			r2.URL.Path = "/"
+		}
+		http.FileServer(http.Dir(sessionPath)).ServeHTTP(w, r2)
+	})
+}
+
+func cloneURL(u *url.URL) *url.URL {
+	if u == nil {
+		return &url.URL{}
+	}
+	u2 := *u
+	return &u2
 }
 
 // loggingMiddleware wraps an http.Handler with request logging and body size limits.

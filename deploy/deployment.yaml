@@ -33,6 +33,9 @@ spec:
             - --log-format=json
             - --log-level=debug
           env:
+            # RDS version diff artifacts persist under this directory (PVC mount)
+            - name: RDS_DIFF_WORK_DIR
+              value: /var/rds-diff-artifacts
             # Mount registry credentials for accessing private container registries
             # The secret should contain a .dockerconfigjson with credentials for registry.redhat.io
             - name: DOCKER_CONFIG
@@ -44,6 +47,8 @@ spec:
             # - name: KUBE_COMPARE_MCP_IMAGE_PULL_TIMEOUT
             #   value: "5m"  # Image pull timeout (default: 5 minutes)
           volumeMounts:
+            - name: rds-diff-artifacts
+              mountPath: /var/rds-diff-artifacts
             - name: registry-credentials
               mountPath: /etc/docker-credentials
               readOnly: true
@@ -82,13 +87,16 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
       volumes:
+        - name: rds-diff-artifacts
+          persistentVolumeClaim:
+            claimName: rds-diff-artifacts
         - name: registry-credentials
           secret:
             # Optional: Create this secret for RDS tools that access registry.redhat.io
             # Run: make setup-registry-credentials
             # Or manually create with your Red Hat registry pull secret
             secretName: registry-credentials
-            optional: true  # Allows deployment without the secret; RDS tools will fail until configured
+            optional: true # Allows deployment without the secret; RDS tools will fail until configured
             items:
               - key: .dockerconfigjson
                 path: config.json

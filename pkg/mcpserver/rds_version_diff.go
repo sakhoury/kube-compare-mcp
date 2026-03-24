@@ -22,7 +22,7 @@ import (
 func RDSVersionDiffTool() *mcp.Tool {
 	return &mcp.Tool{
 		Name:        "kube_compare_rds_version_diff",
-		Description: "Detect configuration differences between two RDS (telco reference) versions. Accepts two downloadable URLs (old and new; e.g. GitHub tree URLs or direct links to zip/tar.gz), downloads and extracts sources, runs the PolicyGenerator binary to generate policies, then compares and reports differences. Returns diff report and session artifact path.",
+		Description: "Detect configuration differences between two RDS (telco reference) versions. Accepts two downloadable URLs (old and new; e.g. GitHub tree URLs or direct links to zip/tar.gz), downloads and extracts sources, runs the PolicyGenerator binary to generate policies, then compares and reports differences. Returns diff report, artifact_id for HTTP download at GET /artifacts/<artifact_id>/..., and session path.",
 		InputSchema: RDSVersionDiffInputSchema(),
 	}
 }
@@ -40,6 +40,10 @@ type RDSVersionDiffOutput struct {
 	DiffReport string `json:"diff_report"`
 	// ArtifactsPath is the path to the session directory containing downloaded sources, generated CRs, and the diff report file.
 	ArtifactsPath string `json:"artifacts_path"`
+	// ArtifactID is the session directory name; use with GET /artifacts/<artifact_id>/... to download files.
+	ArtifactID string `json:"artifact_id"`
+	// ArtifactsBaseURL is set when RDS_ARTIFACTS_BASE_URL env is set; base URL for artifact HTTP access (e.g. https://host/artifacts/<artifact_id>/).
+	ArtifactsBaseURL string `json:"artifacts_base_url,omitempty"`
 }
 
 // HandleRDSVersionDiff is the MCP tool handler for kube_compare_rds_version_diff.
@@ -131,16 +135,30 @@ func HandleRDSVersionDiff(ctx context.Context, req *mcp.CallToolRequest, input R
 		fullReport = string(data)
 	}
 
-	body := summary + "\n\nArtifacts path: " + sessionDir
+	artifactID := rdsdiff.SessionID(sessionDir)
+	output = RDSVersionDiffOutput{
+		DiffReport:    fullReport,
+		ArtifactsPath: sessionDir,
+		ArtifactID:    artifactID,
+	}
+
+	body := summary + "\n\nArtifacts path: " + sessionDir + "\nArtifact ID: " + artifactID
+	body += "\n\nDownload files at: GET /artifacts/" + artifactID + "/"
+	body += "\n  Key paths: diff-report.txt, comparison.json, old/, new/, old/generated/, new/generated/, old-extracted/, new-extracted/"
+
+	baseURL := strings.TrimSuffix(strings.TrimSpace(os.Getenv("RDS_ARTIFACTS_BASE_URL")), "/")
+	if baseURL != "" {
+		output.ArtifactsBaseURL = baseURL + "/artifacts/" + artifactID + "/"
+		body += "\n\nArtifacts base URL: " + output.ArtifactsBaseURL
+		body += "\n  Reports: " + output.ArtifactsBaseURL + "diff-report.txt, " + output.ArtifactsBaseURL + "comparison.json"
+		body += "\n  RDS sources: " + output.ArtifactsBaseURL + "old/, " + output.ArtifactsBaseURL + "new/"
+	}
+
 	if fullReport != "" {
 		body += "\n\n--- Diff report ---\n" + fullReport
 	}
 
-	logger.Info("RDS version diff completed", "sessionDir", sessionDir)
-	output = RDSVersionDiffOutput{
-		DiffReport:    fullReport,
-		ArtifactsPath: sessionDir,
-	}
+	logger.Info("RDS version diff completed", "sessionDir", sessionDir, "artifactID", artifactID)
 	return newToolResultText(body), output, nil
 }
 

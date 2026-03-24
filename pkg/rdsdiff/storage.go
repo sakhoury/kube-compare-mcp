@@ -3,9 +3,11 @@
 package rdsdiff
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -23,6 +25,52 @@ func SessionDir(workDir, requestID string) (string, error) {
 	sessionPath := filepath.Join(workDir, name)
 	if err := os.MkdirAll(sessionPath, 0750); err != nil {
 		return "", fmt.Errorf("mkdir session: %w", err)
+	}
+	return sessionPath, nil
+}
+
+// SessionID returns the session directory name (last path component) for use as a stable artifact ID.
+func SessionID(sessionPath string) string {
+	return filepath.Base(sessionPath)
+}
+
+// ErrInvalidSessionID is returned when the session ID is invalid (e.g. path traversal).
+var ErrInvalidSessionID = errors.New("invalid session id")
+
+// ResolveSessionPath resolves workDir + sessionID to an absolute session path and validates that it
+// is under workDir and exists as a directory. sessionID must be a single path segment (no slashes or "..").
+func ResolveSessionPath(workDir, sessionID string) (sessionPath string, err error) {
+	workDir = filepath.Clean(workDir)
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", ErrInvalidSessionID
+	}
+	cleaned := filepath.Clean(sessionID)
+	if cleaned != sessionID || strings.Contains(sessionID, "..") || filepath.IsAbs(sessionID) {
+		return "", ErrInvalidSessionID
+	}
+	if filepath.Separator != '/' && strings.ContainsRune(sessionID, filepath.Separator) {
+		return "", ErrInvalidSessionID
+	}
+	sessionPath = filepath.Join(workDir, sessionID)
+	absWork, _ := filepath.Abs(workDir)
+	absSession, _ := filepath.Abs(sessionPath)
+	rel, err := filepath.Rel(absWork, absSession)
+	if err != nil {
+		return "", fmt.Errorf("resolve session path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", ErrInvalidSessionID
+	}
+	info, err := os.Stat(sessionPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", err
+		}
+		return "", fmt.Errorf("stat session: %w", err)
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("not a directory: %s", sessionPath)
 	}
 	return sessionPath, nil
 }
