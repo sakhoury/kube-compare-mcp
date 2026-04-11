@@ -1,8 +1,6 @@
 module github.com/sakhoury/kube-compare-mcp
 
-go 1.25.6
-
-toolchain go1.25.7
+go 1.25.9
 
 require (
 	github.com/adrg/strutil v0.3.1
