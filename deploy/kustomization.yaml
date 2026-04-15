@@ -5,17 +5,20 @@ kind: Kustomization
 namespace: kube-compare-mcp
 
 resources:
-- namespace.yaml
-- serviceaccount.yaml
-- clusterrole.yaml
-- clusterrolebinding.yaml
-- deployment.yaml
-- service.yaml
-- route.yaml
+  - namespace.yaml
+  - serviceaccount.yaml
+  - clusterrole.yaml
+  - clusterrolebinding.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - route.yaml
 
-commonLabels:
-  app.kubernetes.io/managed-by: kustomize
-  app.kubernetes.io/part-of: kube-compare-mcp
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/part-of: kube-compare-mcp
 
 # Customize the image using: kustomize edit set image
 # Example: kustomize edit set image quay.io/REPLACE_WITH_YOUR_USERNAME/kube-compare-mcp=quay.io/myuser/kube-compare-mcp:v1.0.0

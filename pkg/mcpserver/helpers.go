@@ -29,6 +29,11 @@ func newToolResultError(errMsg string) *mcp.CallToolResult {
 	}
 }
 
+// newToolResultFormatError creates an error tool result with a user-friendly message from err.
+func newToolResultFormatError(err error) *mcp.CallToolResult {
+	return newToolResultError(formatErrorForUser(err))
+}
+
 // ptrBool returns a pointer to a bool value, used for optional annotation fields.
 func ptrBool(b bool) *bool {
 	return &b

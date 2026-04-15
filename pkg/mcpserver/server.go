@@ -33,11 +33,12 @@ func NewServer(version string) *mcp.Server {
 	mcp.AddTool(s, ResolveRDSTool(), HandleResolveRDS)
 	mcp.AddTool(s, ValidateRDSTool(), HandleValidateRDS)
 	mcp.AddTool(s, BIOSDiffTool(), HandleBIOSDiff)
+	mcp.AddTool(s, RDSVersionDiffTool(), HandleRDSVersionDiff)
 
 	logger.Info("MCP server initialized",
 		"name", ServerName,
 		"version", version,
-		"tools", []string{"kube_compare_cluster_diff", "kube_compare_resolve_rds", "kube_compare_validate_rds", "baremetal_bios_diff"},
+		"tools", []string{"kube_compare_cluster_diff", "kube_compare_resolve_rds", "kube_compare_validate_rds", "baremetal_bios_diff", "kube_compare_rds_version_diff"},
 	)
 
 	return s

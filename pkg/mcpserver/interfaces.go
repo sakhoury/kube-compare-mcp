@@ -129,8 +129,9 @@ type DefaultHTTPDoer struct {
 }
 
 // Do performs an HTTP request using the underlying http.Client.
+// The request URL is validated by callers (e.g. validateRDSVersionDiffURLs) before Do.
 func (d *DefaultHTTPDoer) Do(req *http.Request) (*http.Response, error) {
-	resp, err := d.Client.Do(req)
+	resp, err := d.Client.Do(req) // #nosec G704 -- URL validated by caller
 	if err != nil {
 		return nil, fmt.Errorf("http request failed: %w", err)
 	}
