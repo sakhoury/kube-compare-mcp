@@ -15,7 +15,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/sakhoury/kube-compare-mcp/pkg/rdsdiff"
+	"github.com/openshift/kube-compare/pkg/rdsdiff"
 )
 
 // RDSVersionDiffTool returns the MCP tool definition for rds-version-diff.

@@ -19,7 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/sakhoury/kube-compare-mcp/pkg/mcpserver"
-	"github.com/sakhoury/kube-compare-mcp/pkg/rdsdiff"
+	"github.com/openshift/kube-compare/pkg/rdsdiff"
 )
 
 var version = "dev"
