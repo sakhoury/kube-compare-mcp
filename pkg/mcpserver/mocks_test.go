@@ -16,14 +16,14 @@ import (
 // NewFakeClusterVersion creates a fake ClusterVersion unstructured object.
 func NewFakeClusterVersion(version string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
-		Object: map[string]interface{}{
+		Object: map[string]any{
 			"apiVersion": "config.openshift.io/v1",
 			"kind":       "ClusterVersion",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": "version",
 			},
-			"status": map[string]interface{}{
-				"desired": map[string]interface{}{
+			"status": map[string]any{
+				"desired": map[string]any{
 					"version": version,
 				},
 			},

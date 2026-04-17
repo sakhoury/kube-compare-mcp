@@ -21,7 +21,7 @@ var _ = Describe("CompareHandler", func() {
 
 	Describe("ExtractArguments", func() {
 		It("extracts arguments from a valid request", func() {
-			req := NewMCPRequest(map[string]interface{}{
+			req := NewMCPRequest(map[string]any{
 				"reference": "https://example.com/ref",
 			})
 			args, err := mcpserver.ExtractArguments(req)

@@ -701,8 +701,7 @@ func parseSettingsYAML(settingsStr string) map[string]string {
 		return settings
 	}
 
-	lines := strings.Split(settingsStr, "\n")
-	for _, line := range lines {
+	for line := range strings.SplitSeq(settingsStr, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
