@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -259,35 +258,53 @@ var _ = Describe("CompareHandler", func() {
 	})
 
 	Describe("HTTP Validation Integration", func() {
-		var server *httptest.Server
-
-		AfterEach(func() {
-			if server != nil {
-				server.Close()
-			}
+		It("blocks requests to loopback IPs (SSRF protection)", func() {
+			service := mcpserver.NewCompareService()
+			err := service.ValidateHTTPReference(context.Background(), "http://127.0.0.1:80/metadata.yaml")
+			Expect(err).To(HaveOccurred())
+			var secErr *mcpserver.SecurityError
+			Expect(errors.As(err, &secErr)).To(BeTrue())
+			Expect(secErr.Code).To(Equal("ssrf-blocked"))
+			Expect(secErr.Message).To(ContainSubstring("private"))
 		})
 
-		It("validates live HTTP endpoint successfully", func() {
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				Expect(r.Method).To(Equal(http.MethodHead))
-				w.WriteHeader(http.StatusOK)
-			}))
-
+		It("blocks requests to private network IPs (SSRF protection)", func() {
 			service := mcpserver.NewCompareService()
-			err := service.ValidateHTTPReference(context.Background(), server.URL)
-			Expect(err).NotTo(HaveOccurred())
+			err := service.ValidateHTTPReference(context.Background(), "http://10.0.0.1:80/metadata.yaml")
+			Expect(err).To(HaveOccurred())
+			var secErr *mcpserver.SecurityError
+			Expect(errors.As(err, &secErr)).To(BeTrue())
+			Expect(secErr.Code).To(Equal("ssrf-blocked"))
+		})
+
+		It("blocks requests to non-standard ports", func() {
+			service := mcpserver.NewCompareService()
+			err := service.ValidateHTTPReference(context.Background(), "http://example.com:9999/metadata.yaml")
+			Expect(err).To(HaveOccurred())
+			var secErr *mcpserver.SecurityError
+			Expect(errors.As(err, &secErr)).To(BeTrue())
+			Expect(secErr.Code).To(Equal("ssrf-blocked"))
 		})
 
 		It("handles timeout correctly", func() {
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				time.Sleep(100 * time.Millisecond)
-			}))
-
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 			defer cancel()
 
-			service := mcpserver.NewCompareService()
-			err := service.ValidateHTTPReference(ctx, server.URL)
+			ctrl := gomock.NewController(GinkgoT())
+			defer ctrl.Finish()
+			mockHTTP := NewMockHTTPDoer(ctrl)
+			mockHTTP.EXPECT().
+				Do(gomock.Any()).
+				DoAndReturn(func(req *http.Request) (*http.Response, error) {
+					time.Sleep(100 * time.Millisecond)
+					return nil, context.DeadlineExceeded
+				})
+
+			service := &mcpserver.CompareService{
+				HTTPClient: mockHTTP,
+				Registry:   NewMockRegistryClient(ctrl),
+			}
+			err := service.ValidateHTTPReference(ctx, "http://example.com/metadata.yaml")
 			Expect(err).To(HaveOccurred())
 		})
 	})
