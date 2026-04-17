@@ -367,4 +367,3 @@ func SanitizeErrorMessage(msg string) string {
 
 	return msg
 }
-
