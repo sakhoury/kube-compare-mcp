@@ -166,7 +166,7 @@ func loggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 		start := time.Now()
 
 		// Log incoming MCP requests for observability
-		if r.Method == "POST" && r.URL.Path == "/mcp" {
+		if r.Method == http.MethodPost && r.URL.Path == "/mcp" {
 			logger.Info("Incoming MCP request",
 				"contentLength", r.ContentLength,
 				"remoteAddr", r.RemoteAddr,

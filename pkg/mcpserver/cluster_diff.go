@@ -111,7 +111,7 @@ func NewCompareService() *CompareService {
 			Timeout: getHTTPValidationTimeout(),
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
-					return fmt.Errorf("too many redirects")
+					return errors.New("too many redirects")
 				}
 				return nil
 			},
@@ -204,13 +204,12 @@ func HandleClusterDiff(ctx context.Context, req *mcp.CallToolRequest, input Clus
 // ExtractArguments safely extracts the arguments map from the MCP request.
 // This function is maintained for backward compatibility with tests.
 // With the official SDK's typed handlers, argument extraction is automatic.
-func ExtractArguments(req *mcp.CallToolRequest) (map[string]interface{}, error) {
+func ExtractArguments(req *mcp.CallToolRequest) (map[string]any, error) {
 	if len(req.Params.Arguments) == 0 {
-		// Return empty map for nil/empty arguments - not an error
-		return make(map[string]interface{}), nil
+		return make(map[string]any), nil
 	}
 
-	var arguments map[string]interface{}
+	var arguments map[string]any
 	if err := json.Unmarshal(req.Params.Arguments, &arguments); err != nil {
 		return nil, NewValidationError("arguments", "invalid argument format", "arguments must be a JSON object")
 	}

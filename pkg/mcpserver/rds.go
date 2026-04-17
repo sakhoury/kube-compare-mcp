@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"regexp"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -398,10 +399,5 @@ func CompareVersionTags(a, b string) int {
 
 // ContainsTag checks if a specific tag exists in a list of tags.
 func ContainsTag(tags []string, target string) bool {
-	for _, tag := range tags {
-		if tag == target {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(tags, target)
 }

@@ -135,7 +135,7 @@ func EncodeKubeconfig(kc string) string {
 }
 
 // NewMCPRequest creates an MCP CallToolRequest with the given arguments.
-func NewMCPRequest(args map[string]interface{}) *mcp.CallToolRequest {
+func NewMCPRequest(args map[string]any) *mcp.CallToolRequest {
 	var rawArgs json.RawMessage
 	if args != nil {
 		rawArgs, _ = json.Marshal(args)
@@ -148,7 +148,7 @@ func NewMCPRequest(args map[string]interface{}) *mcp.CallToolRequest {
 }
 
 // NewMCPRequestWithName creates an MCP CallToolRequest with tool name and arguments.
-func NewMCPRequestWithName(name string, args map[string]interface{}) *mcp.CallToolRequest {
+func NewMCPRequestWithName(name string, args map[string]any) *mcp.CallToolRequest {
 	var rawArgs json.RawMessage
 	if args != nil {
 		rawArgs, _ = json.Marshal(args)

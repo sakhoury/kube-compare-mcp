@@ -6,6 +6,7 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -105,7 +106,7 @@ func (c *DefaultClusterClient) GetClusterVersion(ctx context.Context) (string, e
 		return "", fmt.Errorf("failed to extract version from ClusterVersion: %w", err)
 	}
 	if !found {
-		return "", fmt.Errorf("version not found in ClusterVersion status")
+		return "", errors.New("version not found in ClusterVersion status")
 	}
 
 	return version, nil
