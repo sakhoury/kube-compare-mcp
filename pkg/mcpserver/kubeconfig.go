@@ -32,10 +32,6 @@ func DecodeKubeconfig(base64Input string) ([]byte, error) {
 	}
 
 	if len(base64Input) > maxKubeconfigSize {
-		logger.Warn("Kubeconfig size exceeds limit",
-			"size", len(base64Input),
-			"maxSize", maxKubeconfigSize,
-		)
 		return nil, NewSecurityError("kubeconfig-size-limit",
 			fmt.Sprintf("kubeconfig size (%d bytes) exceeds maximum allowed (%d bytes)", len(base64Input), maxKubeconfigSize),
 			"Reduce the kubeconfig size by removing unused contexts, clusters, or users")
@@ -45,12 +41,6 @@ func DecodeKubeconfig(base64Input string) ([]byte, error) {
 	if err != nil {
 		decoded, err = base64.URLEncoding.DecodeString(base64Input)
 		if err != nil {
-			// Log helpful debug info (size only, not content for security)
-			logger.Debug("Failed to decode kubeconfig base64",
-				"inputLength", len(base64Input),
-				"firstChars", safePrefix(base64Input, 10),
-				"lastChars", safeSuffix(base64Input, 10),
-			)
 			return nil, NewValidationError("kubeconfig",
 				fmt.Sprintf("invalid base64 encoding (input length: %d bytes)", len(base64Input)),
 				"Ensure the kubeconfig is properly base64 encoded without truncation or modification")
@@ -89,10 +79,6 @@ func DecodeOrParseKubeconfig(input string) ([]byte, error) {
 
 	// Check size limits first
 	if len(input) > maxKubeconfigSize {
-		logger.Warn("Kubeconfig size exceeds limit",
-			"size", len(input),
-			"maxSize", maxKubeconfigSize,
-		)
 		return nil, NewSecurityError("kubeconfig-size-limit",
 			fmt.Sprintf("kubeconfig size (%d bytes) exceeds maximum allowed (%d bytes)", len(input), maxKubeconfigSize),
 			"Reduce the kubeconfig size by removing unused contexts, clusters, or users")
@@ -135,12 +121,6 @@ func DecodeOrParseKubeconfig(input string) ([]byte, error) {
 			return decoded, nil
 		}
 	}
-
-	// Both attempts failed, provide a helpful error message
-	logger.Debug("Failed to detect kubeconfig format",
-		"inputLength", len(input),
-		"firstChars", safePrefix(input, 20),
-	)
 
 	return nil, NewValidationError("kubeconfig",
 		"unable to parse kubeconfig: not valid YAML or base64-encoded content",
@@ -192,10 +172,7 @@ func ValidateKubeconfigSecurity(config *clientcmdapi.Config) error {
 	if err := BlockExecAuth(config); err != nil {
 		return err
 	}
-	if err := BlockAuthProviderPlugins(config); err != nil {
-		return err
-	}
-	return nil
+	return BlockAuthProviderPlugins(config)
 }
 
 // BlockExecAuth checks for and rejects kubeconfigs that use exec-based authentication.
@@ -389,22 +366,4 @@ func SanitizeErrorMessage(msg string) string {
 	}
 
 	return msg
-}
-
-// safePrefix returns the first n characters of a string, or the full string if shorter.
-// Used for debug logging without exposing full content.
-func safePrefix(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
-
-// safeSuffix returns the last n characters of a string, or the full string if shorter.
-// Used for debug logging without exposing full content.
-func safeSuffix(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return "..." + s[len(s)-n:]
 }
