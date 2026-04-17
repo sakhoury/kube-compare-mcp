@@ -124,20 +124,6 @@ func (f *DefaultClusterClientFactory) NewClient(config *rest.Config) (ClusterCli
 	return &DefaultClusterClient{client: dynClient}, nil
 }
 
-// DefaultHTTPDoer is the production implementation of HTTPDoer using http.Client.
-type DefaultHTTPDoer struct {
-	Client *http.Client
-}
-
-// Do performs an HTTP request using the underlying http.Client.
-func (d *DefaultHTTPDoer) Do(req *http.Request) (*http.Response, error) {
-	resp, err := d.Client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http request failed: %w", err)
-	}
-	return resp, nil
-}
-
 // Package-level default implementations for production use.
 // These can be overridden in tests.
 var (

@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/doyensec/safeurl"
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/mutate"
@@ -105,18 +106,23 @@ type CompareService struct {
 }
 
 // NewCompareService creates a new CompareService with default implementations.
+// The HTTP client uses doyensec/safeurl for SSRF protection, blocking requests to private/internal networks.
 func NewCompareService() *CompareService {
+	cfg := safeurl.GetConfigBuilder().
+		SetTimeout(getHTTPValidationTimeout()).
+		EnableIPv6(true).
+		SetAllowedPorts(80, 443, 8080, 8443).
+		SetCheckRedirect(func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("too many redirects")
+			}
+			return nil
+		}).
+		Build()
+
 	return &CompareService{
-		HTTPClient: &DefaultHTTPDoer{Client: &http.Client{
-			Timeout: getHTTPValidationTimeout(),
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return errors.New("too many redirects")
-				}
-				return nil
-			},
-		}},
-		Registry: DefaultRegistry,
+		HTTPClient: safeurl.Client(cfg),
+		Registry:   DefaultRegistry,
 	}
 }
 
@@ -273,6 +279,33 @@ func ClassifyReference(ref string) ReferenceType {
 	return ReferenceTypeLocal
 }
 
+// safeURLErrorMessage translates safeurl-specific errors into user-friendly security messages.
+func safeURLErrorMessage(err error, refURL string) (string, bool) {
+	var ipErr *safeurl.AllowedIPError
+	var portErr *safeurl.AllowedPortError
+	var schemeErr *safeurl.AllowedSchemeError
+	var hostErr *safeurl.AllowedHostError
+	var invalidHostErr *safeurl.InvalidHostError
+	var credsErr *safeurl.SendingCredentialsBlockedError
+
+	switch {
+	case errors.As(err, &ipErr):
+		return fmt.Sprintf("the URL '%s' resolves to a private/internal network address and was blocked for security (SSRF protection)", refURL), true
+	case errors.As(err, &portErr):
+		return fmt.Sprintf("the URL '%s' uses a non-standard port that is not allowed", refURL), true
+	case errors.As(err, &schemeErr):
+		return fmt.Sprintf("the URL '%s' uses a disallowed scheme; only http:// and https:// are allowed", refURL), true
+	case errors.As(err, &hostErr):
+		return fmt.Sprintf("the host in URL '%s' is not allowed", refURL), true
+	case errors.As(err, &invalidHostErr):
+		return fmt.Sprintf("the URL '%s' has an invalid or empty host", refURL), true
+	case errors.As(err, &credsErr):
+		return fmt.Sprintf("the URL '%s' contains embedded credentials which are not allowed", refURL), true
+	default:
+		return "", false
+	}
+}
+
 const defaultHTTPValidationTimeout = 10 * time.Second
 
 // getHTTPValidationTimeout returns the timeout for HTTP reference validation.
@@ -311,6 +344,11 @@ func (s *CompareService) ValidateHTTPReference(ctx context.Context, refURL strin
 	if err != nil {
 		if ctx.Err() != nil {
 			return NewCompareError("validate", ErrContextCanceled, "The validation was canceled")
+		}
+
+		if msg, ok := safeURLErrorMessage(err, refURL); ok {
+			return NewSecurityError("ssrf-blocked", msg,
+				"Only publicly accessible HTTP/HTTPS URLs on standard ports (80, 443, 8080, 8443) are allowed as references")
 		}
 
 		return NewCompareError("validate",
