@@ -24,7 +24,7 @@ type ValidateRDSResult struct {
 type ValidateRDSInput struct {
 	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
-	RDSType      string `json:"rds_type" jsonschema:"RDS type to compare against: core for Telco Core RDS or ran for Telco RAN DU RDS"`
+	RDSType      string `json:"rds_type" jsonschema:"RDS type to compare against: core for Telco Core RDS, ran for Telco RAN DU RDS, or hub for Telco Hub RDS"`
 	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for the comparison results"`
 	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
 }

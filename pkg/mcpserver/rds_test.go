@@ -47,6 +47,12 @@ var _ = Describe("ReferenceHandler", func() {
 			Entry("RAN RDS with RHEL8",
 				mcpserver.RDSTypeRAN, "rhel8", "v4.17",
 				"ztp-site-generate-rhel8:v4.17"),
+			Entry("hub RDS with RHEL9",
+				mcpserver.RDSTypeHub, "rhel9", "v4.19",
+				"openshift-telco-hub-rds-rhel9:v4.19"),
+			Entry("hub RDS with RHEL8",
+				mcpserver.RDSTypeHub, "rhel8", "v4.20",
+				"openshift-telco-hub-rds-rhel8:v4.20"),
 		)
 	})
 
@@ -116,6 +122,10 @@ var _ = Describe("ReferenceHandler", func() {
 
 		It("has RAN RDS config", func() {
 			Expect(mcpserver.RDSTypeRAN).To(Equal("ran"))
+		})
+
+		It("has Hub RDS config", func() {
+			Expect(mcpserver.RDSTypeHub).To(Equal("hub"))
 		})
 	})
 
@@ -253,6 +263,46 @@ var _ = Describe("ReferenceHandler", func() {
 				_, err := service.ResolveRDS(context.Background(), args)
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(ContainSubstring("accessible"))
+			})
+		})
+
+		Context("when hub RDS is requested with OCP version below minimum (4.19)", func() {
+			It("returns a validation error without hitting the registry", func() {
+				// No registry mock expectations — the min version check must fire before any registry call
+				args := &mcpserver.ResolveRDSArgs{
+					RDSType:    mcpserver.RDSTypeHub,
+					OCPVersion: "4.18.0",
+				}
+
+				_, err := service.ResolveRDS(context.Background(), args)
+				Expect(err).To(HaveOccurred())
+
+				var valErr *mcpserver.ValidationError
+				Expect(errors.As(err, &valErr)).To(BeTrue(), "expected a ValidationError")
+				Expect(valErr.Error()).To(ContainSubstring("hub"))
+				Expect(valErr.Error()).To(ContainSubstring("v4.19"))
+			})
+		})
+
+		Context("when hub RDS is requested with OCP version at the minimum (4.19)", func() {
+			It("passes the version check and resolves the reference", func() {
+				mockRegistry.EXPECT().
+					ListTags(gomock.Any(), gomock.Any()).
+					Return([]string{"v4.19", "v4.20"}, nil).
+					AnyTimes()
+				mockRegistry.EXPECT().
+					HeadImage(gomock.Any(), gomock.Any()).
+					Return(nil).
+					AnyTimes()
+
+				args := &mcpserver.ResolveRDSArgs{
+					RDSType:    mcpserver.RDSTypeHub,
+					OCPVersion: "4.19.0",
+				}
+
+				result, err := service.ResolveRDS(context.Background(), args)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result.Reference).To(ContainSubstring("telco-hub-rds"))
 			})
 		})
 	})
