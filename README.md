@@ -308,7 +308,7 @@ Get the correct Red Hat Telco RDS container reference for a cluster's OpenShift 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `rds_type` | string | Yes | RDS type: `core` for Telco Core RDS or `ran` for Telco RAN DU RDS. |
+| `rds_type` | string | Yes | RDS type: `core` for Telco Core RDS, `ran` for Telco RAN DU RDS, or `hub` for Telco Hub RDS (requires OCP 4.19+). |
 | `ocp_version` | string | No | Explicit OpenShift version (e.g., `4.18`, `4.20.0`). If not provided, auto-detects from cluster. |
 | `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided and `ocp_version` is not set, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
@@ -336,13 +336,17 @@ Find the Telco Core RDS reference for my OpenShift 4.18 cluster
 What RDS reference should I use for a RAN deployment on OpenShift 4.20?
 ```
 
+```
+Find the Telco Hub RDS reference for my OpenShift 4.19 cluster
+```
+
 ### kube_compare_validate_rds
 
 Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the recommended tool for RDS validation.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `rds_type` | string | Yes | RDS type: `core` for Telco Core RDS or `ran` for Telco RAN DU RDS. |
+| `rds_type` | string | Yes | RDS type: `core` for Telco Core RDS, `ran` for Telco RAN DU RDS, or `hub` for Telco Hub RDS (requires OCP 4.19+). |
 | `output_format` | string | No | Output format: `json`, `yaml`, or `junit`. Default: `json`. |
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
 | `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config. |
@@ -375,6 +379,10 @@ Compare my cluster against the Telco Core RDS
 
 ```
 Check if my OpenShift cluster is compliant with the Telco RAN DU reference design
+```
+
+```
+Validate my hub cluster against the Telco Hub RDS for OpenShift 4.19
 ```
 
 ### baremetal_bios_diff
@@ -462,6 +470,14 @@ For Radio Access Network Distributed Unit workloads.
 
 - **Image**: `registry.redhat.io/openshift4/ztp-site-generate-rhel8`
 - **RHEL Variants**: rhel8 only
+
+### Telco Hub RDS (`hub`)
+
+For Advanced Cluster Management hub clusters.
+
+- **Image**: `registry.redhat.io/openshift4/openshift-telco-hub-rds-rhel9`
+- **RHEL Variants**: rhel9 (preferred), rhel8
+- **Minimum OpenShift Version**: 4.19
 
 ### Automatic Version Detection
 
