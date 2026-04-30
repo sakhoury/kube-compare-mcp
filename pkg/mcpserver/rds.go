@@ -26,14 +26,16 @@ var (
 const (
 	RDSTypeCore     = "core"
 	RDSTypeRAN      = "ran"
+	RDSTypeHub      = "hub"
 	registryTimeout = 30 * time.Second
 )
 
 // RDSConfig holds the configuration for an RDS reference type.
 type RDSConfig struct {
-	ImageBase    string   // e.g., "registry.redhat.io/openshift4/openshift-telco-core-rds"
-	Path         string   // Path to metadata.yaml within the container
-	RHELVariants []string // RHEL variants to try in order of preference (e.g., ["rhel9", "rhel8"])
+	ImageBase     string   // e.g., "registry.redhat.io/openshift4/openshift-telco-core-rds"
+	Path          string   // Path to metadata.yaml within the container
+	RHELVariants  []string // RHEL variants to try in order of preference (e.g., ["rhel9", "rhel8"])
+	MinOCPVersion string   // Minimum OpenShift version required (e.g., "v4.19"); empty means no minimum
 }
 
 var rdsConfigs = map[string]RDSConfig{
@@ -47,6 +49,20 @@ var rdsConfigs = map[string]RDSConfig{
 		Path:         "/home/ztp/reference/metadata.yaml",
 		RHELVariants: []string{"rhel8"},
 	},
+	RDSTypeHub: {
+		ImageBase:     "registry.redhat.io/openshift4/openshift-telco-hub-rds",
+		Path:          "/telco-hub/configuration/reference-crs-kube-compare/metadata.yaml",
+		RHELVariants:  []string{"rhel9", "rhel8"},
+		MinOCPVersion: "v4.19",
+	},
+}
+
+func init() {
+	for name, cfg := range rdsConfigs {
+		if cfg.MinOCPVersion != "" && !versionTagRegex.MatchString(cfg.MinOCPVersion) {
+			panic(fmt.Sprintf("rdsConfigs[%q].MinOCPVersion %q does not match vMAJOR.MINOR format", name, cfg.MinOCPVersion))
+		}
+	}
 }
 
 // ResolveRDSResult is the structured response for the kube_compare_resolve_rds tool.
@@ -80,7 +96,7 @@ var defaultReferenceService = NewReferenceService()
 type ResolveRDSInput struct {
 	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
 	Context    string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
-	RDSType    string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS or ran for Telco RAN DU RDS"`
+	RDSType    string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS, ran for Telco RAN DU RDS, or hub for Telco Hub RDS"`
 	OCPVersion string `json:"ocp_version,omitempty" jsonschema:"OpenShift version (e.g. 4.18 or 4.20.0)"`
 }
 
@@ -241,6 +257,15 @@ func (s *ReferenceService) ResolveRDS(ctx context.Context, args *ResolveRDSArgs)
 
 	ocpVersion := ExtractMajorMinorVersion(clusterVersion)
 	cfg := rdsConfigs[args.RDSType]
+
+	if cfg.MinOCPVersion != "" && CompareVersionTags(ocpVersion, cfg.MinOCPVersion) < 0 {
+		return nil, NewValidationError(
+			"ocp_version",
+			fmt.Sprintf("%s RDS requires OpenShift %s or later, but cluster is running %s",
+				args.RDSType, cfg.MinOCPVersion, ocpVersion),
+			fmt.Sprintf("use 'core' or 'ran' RDS types for OpenShift versions earlier than %s", cfg.MinOCPVersion),
+		)
+	}
 
 	rhelVariant, repoRef, versionTags, err := s.findBestRHELVariant(ctx, cfg, ocpVersion)
 	if err != nil {

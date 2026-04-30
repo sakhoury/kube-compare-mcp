@@ -26,6 +26,7 @@ func ClusterDiffInputSchema() *jsonschema.Schema {
 		prop.Default = json.RawMessage(`"json"`)
 	}
 
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -39,9 +40,10 @@ func ResolveRDSInputSchema() *jsonschema.Schema {
 
 	// Add enum constraint for rds_type
 	if prop, ok := schema.Properties["rds_type"]; ok {
-		prop.Enum = []any{"core", "ran"}
+		prop.Enum = []any{"core", "ran", "hub"}
 	}
 
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -55,7 +57,7 @@ func ValidateRDSInputSchema() *jsonschema.Schema {
 
 	// Add enum constraint for rds_type
 	if prop, ok := schema.Properties["rds_type"]; ok {
-		prop.Enum = []any{"core", "ran"}
+		prop.Enum = []any{"core", "ran", "hub"}
 	}
 
 	// Add enum constraint for output_format
@@ -70,6 +72,7 @@ func ValidateRDSInputSchema() *jsonschema.Schema {
 		prop.Default = json.RawMessage(`"html"`)
 	}
 
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -108,6 +111,7 @@ func BIOSDiffInputSchema() *jsonschema.Schema {
 		prop.Default = json.RawMessage(`"json"`)
 	}
 
+	makeOptionalFieldsNullable(schema)
 	return schema
 }
 
@@ -131,4 +135,24 @@ func BIOSDiffOutputSchema() *jsonschema.Schema {
 	}
 
 	return schema
+}
+
+// makeOptionalFieldsNullable makes non-required fields accept null values in
+// addition to their declared type. LLM clients often send "field": null instead
+// of omitting optional fields, which fails strict JSON schema validation.
+func makeOptionalFieldsNullable(schema *jsonschema.Schema) {
+	required := make(map[string]bool, len(schema.Required))
+	for _, r := range schema.Required {
+		required[r] = true
+	}
+
+	for name, prop := range schema.Properties {
+		if required[name] {
+			continue
+		}
+		if prop.Type != "" {
+			prop.Types = []string{prop.Type, "null"}
+			prop.Type = ""
+		}
+	}
 }
