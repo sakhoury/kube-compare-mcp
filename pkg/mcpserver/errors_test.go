@@ -87,6 +87,7 @@ var _ = Describe("Errors", func() {
 			Entry("ErrSecurityViolation", mcpserver.ErrSecurityViolation, "security"),
 			Entry("ErrExecAuthBlocked", mcpserver.ErrExecAuthBlocked, "not allowed"),
 			Entry("ErrAuthProviderBlocked", mcpserver.ErrAuthProviderBlocked, "not allowed"),
+			Entry("ErrRDSAnalysisFailed", mcpserver.ErrRDSAnalysisFailed, "could not be completed"),
 		)
 
 		It("returns error message for unknown errors", func() {
@@ -114,6 +115,7 @@ var _ = Describe("Errors", func() {
 			Expect(mcpserver.ErrSecurityViolation).NotTo(BeNil())
 			Expect(mcpserver.ErrExecAuthBlocked).NotTo(BeNil())
 			Expect(mcpserver.ErrAuthProviderBlocked).NotTo(BeNil())
+			Expect(mcpserver.ErrRDSAnalysisFailed).NotTo(BeNil())
 		})
 
 		DescribeTable("sentinel errors have meaningful messages",

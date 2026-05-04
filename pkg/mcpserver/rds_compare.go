@@ -24,9 +24,10 @@ import (
 
 // ValidateRDSResult is the structured response for the kube_compare_validate_rds tool.
 type ValidateRDSResult struct {
-	RDSReference *ResolveRDSResult `json:"rds_reference"`
-	Comparison   json.RawMessage   `json:"comparison"`
-	RDSAnalysis  string            `json:"rds_analysis,omitempty"`
+	RDSReference     *ResolveRDSResult `json:"rds_reference"`
+	Comparison       json.RawMessage   `json:"comparison"`
+	RDSAnalysis      string            `json:"rds_analysis,omitempty"`
+	RDSAnalysisError string            `json:"rds_analysis_error,omitempty"`
 }
 
 // ValidateRDSInput defines the typed input for the kube_compare_validate_rds tool.
@@ -46,8 +47,11 @@ type ValidateRDSOutput struct{}
 // ValidateRDSTool returns the MCP tool definition for comparing a cluster against an RDS.
 func ValidateRDSTool() *mcp.Tool {
 	return &mcp.Tool{
-		Name:        "kube_compare_validate_rds",
-		Description: "Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the recommended tool for RDS validation.",
+		Name: "kube_compare_validate_rds",
+		Description: "Validate an OpenShift cluster's compliance with Red Hat Telco RDS. " +
+			"Optionally classifies deviations using RDS Analyzer rules into impact categories " +
+			"(Impacting, NotImpacting, NeedsReview, NotADeviation) when rds_analysis is enabled. " +
+			"This is the recommended tool for RDS validation.",
 		InputSchema: ValidateRDSInputSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			ReadOnlyHint:    true,
@@ -58,21 +62,36 @@ func ValidateRDSTool() *mcp.Tool {
 	}
 }
 
-// ValidateRDSArgs holds the parsed arguments for the kube_compare_validate_rds operation.
-type ValidateRDSArgs struct {
-	Kubeconfig        string
-	Context           string
-	RDSType           string
-	OutputFormat      string
-	AllResources      bool
-	RDSAnalysis       bool
-	RDSAnalysisFormat string
-}
-
 // RulesFetcher retrieves analysis rules for a given RDS type.
 type RulesFetcher func(ctx context.Context, rdsType string) ([]byte, error)
 
 const rdsAnalyzerRulesConfigMap = "rds-analyzer-rules"
+
+// analysisFormatText is the rds-analyzer format value for plain text output.
+const analysisFormatText = "text"
+
+// AnalysisService encapsulates dependencies for RDS analysis operations.
+// This enables dependency injection for testing.
+type AnalysisService struct {
+	FetchRules RulesFetcher
+}
+
+// NewAnalysisService creates a new AnalysisService with default implementations.
+func NewAnalysisService() *AnalysisService {
+	return &AnalysisService{
+		FetchRules: fetchAnalysisRulesFromConfigMap,
+	}
+}
+
+var defaultAnalysisService = NewAnalysisService()
+
+// Package-level function variables for testability.
+// Tests can swap these to inject fakes without changing the handler signature.
+var (
+	resolveRDSFunc        = ResolveRDSInternal
+	validateReferenceFunc = validateReference
+	runCompareFunc        = RunCompare
+)
 
 // HandleValidateRDS is the MCP tool handler for the kube_compare_validate_rds tool.
 // It uses typed input via the ValidateRDSInput struct.
@@ -131,6 +150,8 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 		"context", input.Context,
 		"outputFormat", input.OutputFormat,
 		"allResources", input.AllResources,
+		"rdsAnalysis", input.RDSAnalysis,
+		"rdsAnalysisFormat", input.RDSAnalysisFormat,
 	)
 
 	logger.Info("Finding RDS reference for cluster")
@@ -140,7 +161,7 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 		RDSType:    input.RDSType,
 	}
 
-	rdsResult, err := ResolveRDSInternal(ctx, rdsArgs)
+	rdsResult, err := resolveRDSFunc(ctx, rdsArgs)
 	if err != nil {
 		logger.Debug("Failed to find RDS reference", "error", err)
 		return newToolResultError(formatErrorForUser(err)), ValidateRDSOutput{}, nil
@@ -153,10 +174,13 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 		"validated", rdsResult.Validated,
 	)
 
-	// When analysis is enabled, force JSON output so the analyzer can parse the comparison
-	if input.RDSAnalysis {
-		logger.Debug("RDS analysis enabled, forcing JSON output format for comparison")
-		input.OutputFormat = "json"
+	// When analysis is enabled, JSON output is required, if the client requested a different output
+	// throw a validation error.
+	if input.RDSAnalysis && input.OutputFormat != "" && input.OutputFormat != "json" {
+		err := NewValidationError("output_format",
+			fmt.Sprintf("RDS analysis requires JSON output format, but '%s' was requested", input.OutputFormat),
+			"Either omit output_format (defaults to JSON) or set it to 'json' when using rds_analysis")
+		return newToolResultError(formatErrorForUser(err)), ValidateRDSOutput{}, nil
 	}
 
 	logger.Info("Starting cluster comparison", "reference", rdsResult.Reference)
@@ -168,12 +192,12 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 		Context:      input.Context,
 	}
 
-	if err := validateReference(ctx, compareArgs); err != nil {
+	if err := validateReferenceFunc(ctx, compareArgs); err != nil {
 		logger.Debug("Reference validation failed", "error", err)
 		return newToolResultError(formatErrorForUser(err)), ValidateRDSOutput{}, nil
 	}
 
-	comparisonOutput, err := RunCompare(ctx, compareArgs)
+	comparisonOutput, err := runCompareFunc(ctx, compareArgs)
 	if err != nil {
 		logger.Debug("Comparison failed", "error", err)
 		return newToolResultError(formatErrorForUser(err)), ValidateRDSOutput{}, nil
@@ -195,12 +219,12 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 	if input.RDSAnalysis {
 		analysisFormat := input.RDSAnalysisFormat
 		if analysisFormat == "" {
-			analysisFormat = "html"
+			analysisFormat = DefaultRDSAnalysisFormat
 		}
-		analysisOutput, analysisErr := RunRDSAnalysis(ctx, comparisonOutput, input.RDSType, rdsResult.ClusterVersion, analysisFormat, fetchAnalysisRulesFromConfigMap)
+		analysisOutput, analysisErr := RunRDSAnalysis(ctx, comparisonOutput, input.RDSType, rdsResult.ClusterVersion, analysisFormat, defaultAnalysisService.FetchRules)
 		if analysisErr != nil {
 			logger.Warn("RDS analysis failed (non-fatal)", "error", analysisErr)
-			combinedResult.RDSAnalysis = fmt.Sprintf("Analysis failed: %v", analysisErr)
+			combinedResult.RDSAnalysisError = formatErrorForUser(fmt.Errorf("%w: %w", ErrRDSAnalysisFailed, analysisErr))
 		} else {
 			combinedResult.RDSAnalysis = analysisOutput
 		}
@@ -261,13 +285,16 @@ func fetchAnalysisRulesFromConfigMap(ctx context.Context, rdsType string) ([]byt
 
 // RunRDSAnalysis runs the RDS impact analysis on comparison JSON output.
 func RunRDSAnalysis(ctx context.Context, comparisonJSON, rdsType, clusterVersion, analysisFormat string, fetchRules RulesFetcher) (string, error) {
+	if clusterVersion == "" {
+		return "", fmt.Errorf("cluster version is required for RDS analysis")
+	}
+
 	rulesData, err := fetchRules(ctx, rdsType)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch analysis rules: %w", err)
 	}
 
-	// Bridge version format: ExtractMajorMinorVersion returns "v4.20",
-	// but rds-analyzer's ParseOCPVersion expects "4.20"
+	// rds-analyzer expects version without "v" prefix (e.g., "4.20" not "v4.20")
 	ocpVersion := strings.TrimPrefix(ExtractMajorMinorVersion(clusterVersion), "v")
 
 	analyzer, err := rdsanalyzer.NewFromBytes(rulesData, ocpVersion)
@@ -284,10 +311,10 @@ func RunRDSAnalysis(ctx context.Context, comparisonJSON, rdsType, clusterVersion
 	var format, mode string
 	switch analysisFormat {
 	case "reporting":
-		format = "text"
+		format = analysisFormatText
 		mode = "reporting"
-	case "text":
-		format = "text"
+	case analysisFormatText:
+		format = analysisFormatText
 		mode = "simple"
 	default:
 		format = "html"

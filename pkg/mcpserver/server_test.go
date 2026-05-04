@@ -92,6 +92,12 @@ var _ = Describe("Server", func() {
 			Expect(service.HTTPClient).NotTo(BeNil())
 			Expect(service.Registry).NotTo(BeNil())
 		})
+
+		It("NewAnalysisService creates a valid service", func() {
+			service := mcpserver.NewAnalysisService()
+			Expect(service).NotTo(BeNil())
+			Expect(service.FetchRules).NotTo(BeNil())
+		})
 	})
 
 	Describe("Service methods", func() {
@@ -116,6 +122,13 @@ var _ = Describe("Server", func() {
 			It("exposes Registry field", func() {
 				service := mcpserver.NewCompareService()
 				Expect(service.Registry).NotTo(BeNil())
+			})
+		})
+
+		Context("AnalysisService", func() {
+			It("exposes FetchRules field", func() {
+				service := mcpserver.NewAnalysisService()
+				Expect(service.FetchRules).NotTo(BeNil())
 			})
 		})
 	})
