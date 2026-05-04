@@ -24,9 +24,6 @@ import (
 )
 
 const (
-	// DefaultReferenceConfigNamespace is the default namespace for BIOS reference ConfigMaps.
-	DefaultReferenceConfigNamespace = "reference-configs"
-
 	// BMHRoleAnnotation is the annotation key for node role on BareMetalHost.
 	BMHRoleAnnotation = "bmac.agent-install.openshift.io/role"
 
@@ -60,12 +57,6 @@ var (
 		Group:    "metal3.io",
 		Version:  "v1alpha1",
 		Resource: "hostfirmwaresettings",
-	}
-
-	configMapGVR = schema.GroupVersionResource{
-		Group:    "",
-		Version:  "v1",
-		Resource: "configmaps",
 	}
 )
 

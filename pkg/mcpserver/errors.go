@@ -42,6 +42,9 @@ var (
 
 	// ErrAuthProviderBlocked indicates auth provider plugins were blocked for security
 	ErrAuthProviderBlocked = errors.New("auth provider plugins are not allowed")
+
+	// ErrRDSAnalysisFailed indicates the RDS deviation analysis could not be completed
+	ErrRDSAnalysisFailed = errors.New("RDS analysis failed")
 )
 
 // CompareError provides detailed error information for comparison failures.
@@ -190,6 +193,12 @@ func FormatErrorForUser(err error) string {
 	if errors.Is(err, ErrAuthProviderBlocked) {
 		return "Auth provider plugins are not allowed for security reasons. " +
 			"Please use token, client certificate, or OIDC authentication instead."
+	}
+
+	if errors.Is(err, ErrRDSAnalysisFailed) {
+		return "RDS deviation analysis could not be completed. " +
+			"Ensure the MCP server is running in-cluster and the analysis rules ConfigMap is deployed. " +
+			"The comparison results are still valid."
 	}
 
 	// Default: return the error as-is

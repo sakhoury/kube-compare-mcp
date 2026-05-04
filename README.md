@@ -342,13 +342,15 @@ Find the Telco Hub RDS reference for my OpenShift 4.19 cluster
 
 ### kube_compare_validate_rds
 
-Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the recommended tool for RDS validation.
+Validate an OpenShift cluster's compliance with Red Hat Telco RDS. Optionally classifies deviations using RDS Analyzer rules into impact categories (Impacting, NotImpacting, NeedsReview, NotADeviation) when `rds_analysis` is enabled. This is the recommended tool for RDS validation.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `rds_type` | string | Yes | RDS type: `core` for Telco Core RDS, `ran` for Telco RAN DU RDS, or `hub` for Telco Hub RDS (requires OCP 4.19+). |
 | `output_format` | string | No | Output format: `json`, `yaml`, or `junit`. Default: `json`. |
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
+| `rds_analysis` | boolean | No | Enable RDS impact analysis of detected deviations. Default: `false`. |
+| `rds_analysis_format` | string | No | Output format for analysis results: `text`, `html`, or `reporting`. Default: `html`. Requires `rds_analysis: true`. |
 | `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
 
@@ -367,7 +369,8 @@ Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the r
   "comparison": {
     "Summary": { ... },
     "Diffs": [ ... ]
-  }
+  },
+  "rds_analysis": "... analysis output (when rds_analysis is enabled) ..."
 }
 ```
 
@@ -383,6 +386,10 @@ Check if my OpenShift cluster is compliant with the Telco RAN DU reference desig
 
 ```
 Validate my hub cluster against the Telco Hub RDS for OpenShift 4.19
+```
+
+```
+Validate my cluster against the Telco Core RDS and analyze the impact of any deviations
 ```
 
 ### baremetal_bios_diff

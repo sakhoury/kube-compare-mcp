@@ -66,6 +66,12 @@ func ValidateRDSInputSchema() *jsonschema.Schema {
 		prop.Default = json.RawMessage(`"json"`)
 	}
 
+	// Add enum constraint for rds_analysis_format
+	if prop, ok := schema.Properties["rds_analysis_format"]; ok {
+		prop.Enum = []any{"text", "html", "reporting"}
+		prop.Default = json.RawMessage(`"` + DefaultRDSAnalysisFormat + `"`)
+	}
+
 	makeOptionalFieldsNullable(schema)
 	return schema
 }
