@@ -8,7 +8,7 @@ require (
 	github.com/google/go-containerregistry v0.21.5
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.6.0
-	github.com/onsi/ginkgo/v2 v2.28.3
+	github.com/onsi/ginkgo/v2 v2.29.0
 	github.com/onsi/gomega v1.40.0
 	github.com/openshift/kube-compare v0.12.0
 	go.uber.org/mock v0.6.0
