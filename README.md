@@ -291,6 +291,7 @@ Detect configuration drift between a Kubernetes/OpenShift cluster and a referenc
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
 | `kubeconfig` | string | No | Kubeconfig content for connecting to a remote cluster (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config or KUBECONFIG env. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. Only applicable when `kubeconfig` is provided. |
+| `managed_cluster` | string | No | Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with `kubeconfig`/`context`. Requires the server to run on the ACM hub. See [Connecting to an ACM managed cluster](#connecting-to-an-acm-managed-cluster). |
 
 **Example prompts:**
 
@@ -312,6 +313,7 @@ Get the correct Red Hat Telco RDS container reference for a cluster's OpenShift 
 | `ocp_version` | string | No | Explicit OpenShift version (e.g., `4.18`, `4.20.0`). If not provided, auto-detects from cluster. |
 | `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided and `ocp_version` is not set, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
+| `managed_cluster` | string | No | Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with `kubeconfig`/`context`. Requires the server to run on the ACM hub. See [Connecting to an ACM managed cluster](#connecting-to-an-acm-managed-cluster). |
 
 **Response:**
 
@@ -351,6 +353,7 @@ Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the r
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
 | `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
+| `managed_cluster` | string | No | Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with `kubeconfig`/`context`. Requires the server to run on the ACM hub. See [Connecting to an ACM managed cluster](#connecting-to-an-acm-managed-cluster). |
 
 **Response:**
 
@@ -658,6 +661,41 @@ You can then provide this minimal kubeconfig content to the MCP tools directly o
 base64 < minimal-kubeconfig.yaml    # Works on both Linux and macOS
 ```
 
+### Connecting to an ACM managed cluster
+
+If the MCP server runs on an Advanced Cluster Management (ACM) hub, the
+`kube_compare_cluster_diff`, `kube_compare_resolve_rds`, and `kube_compare_validate_rds`
+tools can connect to a managed (spoke) cluster by name using the `managed_cluster`
+parameter, without you having to supply a kubeconfig:
+
+```json
+{
+  "reference": "https://example.com/metadata.yaml",
+  "managed_cluster": "spoke-1"
+}
+```
+
+When `managed_cluster` is set, the server:
+
+1. Reads the cluster-scoped `ManagedCluster` resource named `spoke-1` from the hub and takes
+   the API server URL and CA bundle from its `spec.managedClusterClientConfigs`.
+2. Reads the `spoke-1-admin-kubeconfig` secret in the `spoke-1` namespace on the hub and
+   uses its credentials to authenticate to the spoke.
+
+Notes and restrictions:
+
+- The server must be running inside the ACM hub cluster (it uses in-cluster config to reach
+  the hub). If it is not, the call returns an error.
+- `managed_cluster` is **mutually exclusive** with `kubeconfig` and `context`; providing them
+  together returns a validation error.
+- If the `ManagedCluster` resource or the `<name>-admin-kubeconfig` secret cannot be found on
+  the hub, the call returns an error explaining which one is missing.
+- The `baremetal_bios_diff` tool does **not** support `managed_cluster`, because BareMetalHost
+  resources are managed on the hub rather than on the spoke.
+- The hub service account needs read access to `cluster.open-cluster-management.io`
+  `managedclusters` and to the per-cluster admin kubeconfig secrets. The default
+  [ClusterRole](deploy/clusterrole.yaml) already grants this.
+
 ### Security Considerations
 
 The server implements several security measures when processing kubeconfigs:
@@ -669,6 +707,10 @@ The server implements several security measures when processing kubeconfigs:
 | **Exec auth blocked** | Exec-based authentication providers are rejected to prevent arbitrary code execution |
 | **Auth plugins blocked** | Deprecated auth provider plugins are rejected |
 | **Error sanitization** | Sensitive information (tokens, passwords) is redacted from error messages |
+
+The `managed_cluster` path reuses the same secure kubeconfig builder, so the admin kubeconfig
+read from the hub secret is subject to the same exec/auth-provider blocking. Note that the
+`<name>-admin-kubeconfig` secret typically grants cluster-admin on the spoke cluster.
 
 **Supported authentication methods:**
 - Bearer tokens
