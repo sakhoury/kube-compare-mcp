@@ -22,11 +22,12 @@ type ValidateRDSResult struct {
 
 // ValidateRDSInput defines the typed input for the kube_compare_validate_rds tool.
 type ValidateRDSInput struct {
-	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
-	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
-	RDSType      string `json:"rds_type" jsonschema:"RDS type to compare against: core for Telco Core RDS, ran for Telco RAN DU RDS, or hub for Telco Hub RDS"`
-	OutputFormat string `json:"output_format,omitempty" jsonschema:"Output format for the comparison results"`
-	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
+	Kubeconfig     string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
+	Context        string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
+	ManagedCluster string `json:"managed_cluster,omitempty" jsonschema:"Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with kubeconfig and context. The server must be running on the ACM hub."`
+	RDSType        string `json:"rds_type" jsonschema:"RDS type to compare against: core for Telco Core RDS, ran for Telco RAN DU RDS, or hub for Telco Hub RDS"`
+	OutputFormat   string `json:"output_format,omitempty" jsonschema:"Output format for the comparison results"`
+	AllResources   bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
 }
 
 // ValidateRDSOutput is an empty output struct (tool returns text content).
@@ -49,11 +50,12 @@ func ValidateRDSTool() *mcp.Tool {
 
 // ValidateRDSArgs holds the parsed arguments for the kube_compare_validate_rds operation.
 type ValidateRDSArgs struct {
-	Kubeconfig   string
-	Context      string
-	RDSType      string
-	OutputFormat string
-	AllResources bool
+	Kubeconfig     string
+	Context        string
+	ManagedCluster string
+	RDSType        string
+	OutputFormat   string
+	AllResources   bool
 }
 
 // HandleValidateRDS is the MCP tool handler for the kube_compare_validate_rds tool.
@@ -80,6 +82,15 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 	if err := ctx.Err(); err != nil {
 		logger.Warn("Request canceled", "error", err)
 		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ValidateRDSOutput{}, nil
+	}
+
+	// Validate managed_cluster is not combined with kubeconfig/context
+	if input.ManagedCluster != "" && (input.Kubeconfig != "" || input.Context != "") {
+		err := NewValidationError("managed_cluster",
+			"'managed_cluster' cannot be combined with 'kubeconfig' or 'context'",
+			"Provide either managed_cluster (for an ACM spoke via the hub) or kubeconfig/context, not both")
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), ValidateRDSOutput{}, nil
 	}
 
 	// Validate context requires kubeconfig
@@ -117,9 +128,10 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 
 	logger.Info("Finding RDS reference for cluster")
 	rdsArgs := &ResolveRDSArgs{
-		Kubeconfig: kubeconfig,
-		Context:    input.Context,
-		RDSType:    input.RDSType,
+		Kubeconfig:     kubeconfig,
+		Context:        input.Context,
+		ManagedCluster: input.ManagedCluster,
+		RDSType:        input.RDSType,
 	}
 
 	rdsResult, err := ResolveRDSInternal(ctx, rdsArgs)
@@ -137,11 +149,12 @@ func HandleValidateRDS(ctx context.Context, req *mcp.CallToolRequest, input Vali
 
 	logger.Info("Starting cluster comparison", "reference", rdsResult.Reference)
 	compareArgs := &CompareArgs{
-		Reference:    rdsResult.Reference,
-		OutputFormat: input.OutputFormat,
-		AllResources: input.AllResources,
-		Kubeconfig:   kubeconfig,
-		Context:      input.Context,
+		Reference:      rdsResult.Reference,
+		OutputFormat:   input.OutputFormat,
+		AllResources:   input.AllResources,
+		Kubeconfig:     kubeconfig,
+		Context:        input.Context,
+		ManagedCluster: input.ManagedCluster,
 	}
 
 	if err := validateReference(ctx, compareArgs); err != nil {

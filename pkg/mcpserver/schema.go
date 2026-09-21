@@ -26,6 +26,11 @@ func ClusterDiffInputSchema() *jsonschema.Schema {
 		prop.Default = json.RawMessage(`"json"`)
 	}
 
+	// Add pattern validation for the managed cluster name (Kubernetes resource name)
+	if prop, ok := schema.Properties["managed_cluster"]; ok {
+		prop.Pattern = k8sNamePattern
+	}
+
 	makeOptionalFieldsNullable(schema)
 	return schema
 }
@@ -41,6 +46,11 @@ func ResolveRDSInputSchema() *jsonschema.Schema {
 	// Add enum constraint for rds_type
 	if prop, ok := schema.Properties["rds_type"]; ok {
 		prop.Enum = []any{"core", "ran", "hub"}
+	}
+
+	// Add pattern validation for the managed cluster name (Kubernetes resource name)
+	if prop, ok := schema.Properties["managed_cluster"]; ok {
+		prop.Pattern = k8sNamePattern
 	}
 
 	makeOptionalFieldsNullable(schema)
@@ -64,6 +74,11 @@ func ValidateRDSInputSchema() *jsonschema.Schema {
 	if prop, ok := schema.Properties["output_format"]; ok {
 		prop.Enum = []any{"json", "yaml", "junit"}
 		prop.Default = json.RawMessage(`"json"`)
+	}
+
+	// Add pattern validation for the managed cluster name (Kubernetes resource name)
+	if prop, ok := schema.Properties["managed_cluster"]; ok {
+		prop.Pattern = k8sNamePattern
 	}
 
 	makeOptionalFieldsNullable(schema)

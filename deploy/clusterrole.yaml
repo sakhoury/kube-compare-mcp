@@ -97,6 +97,13 @@ rules:
   # read arbitrary resource types to compare them against reference templates. The reference
   # configurations (e.g., Telco RDS) can define any Kubernetes resource type, including CRDs.
   # This grants READ-ONLY access - no create, update, or delete permissions are granted.
+  # This rule also covers the resources read for the 'managed_cluster' feature:
+  # cluster.open-cluster-management.io/managedclusters (ACM ManagedCluster resources),
+  # proxy.open-cluster-management.io/managedproxyconfigurations (cluster-proxy addon config),
+  # route.openshift.io/routes (the cluster-proxy-addon-user Route), and the per-cluster
+  # ManagedServiceAccount token secrets in spoke namespaces on the hub. If you tighten or
+  # remove this wildcard rule, keep read access to those resources for the managed_cluster
+  # feature to work.
   # If you have strict security requirements, you can remove this rule and explicitly list
   # only the resource types used in your specific reference configurations.
   - apiGroups: ["*"]

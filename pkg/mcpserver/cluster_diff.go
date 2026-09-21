@@ -48,6 +48,8 @@ type ClusterDiffInput struct {
 	AllResources bool   `json:"all_resources,omitempty" jsonschema:"Compare all resources of types mentioned in the reference"`
 	Kubeconfig   string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to a remote cluster. If omitted, uses in-cluster config."`
 	Context      string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
+
+	ManagedCluster string `json:"managed_cluster,omitempty" jsonschema:"Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with kubeconfig and context. The server must be running on the ACM hub."`
 }
 
 // ClusterDiffOutput is an empty output struct (tool returns text content).
@@ -156,11 +158,21 @@ func HandleClusterDiff(ctx context.Context, req *mcp.CallToolRequest, input Clus
 
 	// Convert typed input to CompareArgs
 	args := &CompareArgs{
-		Reference:    input.Reference,
-		OutputFormat: input.OutputFormat,
-		AllResources: input.AllResources,
-		Kubeconfig:   input.Kubeconfig,
-		Context:      input.Context,
+		Reference:      input.Reference,
+		OutputFormat:   input.OutputFormat,
+		AllResources:   input.AllResources,
+		Kubeconfig:     input.Kubeconfig,
+		Context:        input.Context,
+		ManagedCluster: input.ManagedCluster,
+	}
+
+	// Validate managed_cluster is not combined with kubeconfig/context
+	if args.ManagedCluster != "" && (args.Kubeconfig != "" || args.Context != "") {
+		err := NewValidationError("managed_cluster",
+			"'managed_cluster' cannot be combined with 'kubeconfig' or 'context'",
+			"Provide either managed_cluster (for an ACM spoke via the hub) or kubeconfig/context, not both")
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), ClusterDiffOutput{}, nil
 	}
 
 	// Validate context requires kubeconfig
@@ -225,11 +237,12 @@ func ExtractArguments(req *mcp.CallToolRequest) (map[string]any, error) {
 
 // CompareArgs holds the parsed arguments for the compare operation.
 type CompareArgs struct {
-	Reference    string
-	OutputFormat string
-	AllResources bool
-	Kubeconfig   string // Base64-encoded kubeconfig content (optional)
-	Context      string // Kubernetes context name to use (optional)
+	Reference      string
+	OutputFormat   string
+	AllResources   bool
+	Kubeconfig     string // Base64-encoded kubeconfig content (optional)
+	Context        string // Kubernetes context name to use (optional)
+	ManagedCluster string // ACM managed (spoke) cluster name (optional)
 }
 
 // validateReference validates the reference configuration path/URL.
@@ -731,22 +744,32 @@ func RunCompare(ctx context.Context, args *CompareArgs) (string, error) {
 	opts.OutputFormat = args.OutputFormat
 	opts.TmpDir = tmpDir
 
-	var configFlags *genericclioptions.ConfigFlags
-	if args.Kubeconfig != "" {
+	// Resolve the connection to a single rest.Config (nil means default/in-cluster).
+	var restConfig *rest.Config
+	switch {
+	case args.ManagedCluster != "":
+		logger.Info("Using ACM managed cluster for cluster connection", "managedCluster", args.ManagedCluster)
+		restConfig, err = BuildRestConfigForManagedCluster(ctx, args.ManagedCluster)
+		if err != nil {
+			return "", err
+		}
+	case args.Kubeconfig != "":
 		logger.Info("Using provided kubeconfig for cluster connection")
 
 		// Use DecodeOrParseKubeconfig to support both raw YAML and base64-encoded kubeconfig
-		kubeconfigData, err := DecodeOrParseKubeconfig(args.Kubeconfig)
+		kubeconfigData, decodeErr := DecodeOrParseKubeconfig(args.Kubeconfig)
+		if decodeErr != nil {
+			return "", decodeErr
+		}
+
+		restConfig, err = BuildSecureRestConfigFromBytes(kubeconfigData, args.Context)
 		if err != nil {
 			return "", err
 		}
+	}
 
-		restConfig, err := BuildSecureRestConfigFromBytes(kubeconfigData, args.Context)
-		if err != nil {
-			return "", err
-		}
-
-		configFlags = genericclioptions.NewConfigFlags(true)
+	configFlags := genericclioptions.NewConfigFlags(true)
+	if restConfig != nil {
 		configFlags.WithWrapConfigFn(func(config *rest.Config) *rest.Config {
 			config.Host = restConfig.Host
 			config.TLSClientConfig = restConfig.TLSClientConfig
@@ -762,7 +785,6 @@ func RunCompare(ctx context.Context, args *CompareArgs) (string, error) {
 		})
 	} else {
 		logger.Debug("Using default cluster credentials")
-		configFlags = genericclioptions.NewConfigFlags(true)
 	}
 	factory := kcmdutil.NewFactory(configFlags)
 

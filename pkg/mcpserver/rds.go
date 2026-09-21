@@ -94,10 +94,11 @@ var defaultReferenceService = NewReferenceService()
 
 // ResolveRDSInput defines the typed input for the kube_compare_resolve_rds tool.
 type ResolveRDSInput struct {
-	Kubeconfig string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
-	Context    string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
-	RDSType    string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS, ran for Telco RAN DU RDS, or hub for Telco Hub RDS"`
-	OCPVersion string `json:"ocp_version,omitempty" jsonschema:"OpenShift version (e.g. 4.18 or 4.20.0)"`
+	Kubeconfig     string `json:"kubeconfig,omitempty" jsonschema:"Kubeconfig content (raw YAML or base64-encoded) for connecting to the target cluster. If omitted, uses in-cluster config."`
+	Context        string `json:"context,omitempty" jsonschema:"Kubernetes context name to use from the provided kubeconfig"`
+	ManagedCluster string `json:"managed_cluster,omitempty" jsonschema:"Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with kubeconfig and context. The server must be running on the ACM hub."`
+	RDSType        string `json:"rds_type" jsonschema:"RDS type to find: core for Telco Core RDS, ran for Telco RAN DU RDS, or hub for Telco Hub RDS"`
+	OCPVersion     string `json:"ocp_version,omitempty" jsonschema:"OpenShift version (e.g. 4.18 or 4.20.0)"`
 }
 
 // ResolveRDSOutput is an empty output struct (tool returns text content).
@@ -144,6 +145,15 @@ func HandleResolveRDS(ctx context.Context, req *mcp.CallToolRequest, input Resol
 		return newToolResultError(formatErrorForUser(ErrContextCanceled)), ResolveRDSOutput{}, nil
 	}
 
+	// Validate managed_cluster is not combined with kubeconfig/context
+	if input.ManagedCluster != "" && (input.Kubeconfig != "" || input.Context != "") {
+		err := NewValidationError("managed_cluster",
+			"'managed_cluster' cannot be combined with 'kubeconfig' or 'context'",
+			"Provide either managed_cluster (for an ACM spoke via the hub) or kubeconfig/context, not both")
+		logger.Debug("Validation failed", "error", err)
+		return newToolResultError(formatErrorForUser(err)), ResolveRDSOutput{}, nil
+	}
+
 	// Validate context requires kubeconfig
 	if input.Context != "" && input.Kubeconfig == "" {
 		err := NewValidationError("context",
@@ -156,10 +166,11 @@ func HandleResolveRDS(ctx context.Context, req *mcp.CallToolRequest, input Resol
 	// Convert typed input to ResolveRDSArgs
 	// Note: SDK validates enum constraint, so RDSType is already lowercase ("core" or "ran")
 	args := &ResolveRDSArgs{
-		Kubeconfig: input.Kubeconfig,
-		Context:    input.Context,
-		RDSType:    input.RDSType,
-		OCPVersion: input.OCPVersion,
+		Kubeconfig:     input.Kubeconfig,
+		Context:        input.Context,
+		ManagedCluster: input.ManagedCluster,
+		RDSType:        input.RDSType,
+		OCPVersion:     input.OCPVersion,
 	}
 
 	logger.Debug("Parsed kube_compare_resolve_rds arguments",
@@ -213,20 +224,27 @@ func (s *ReferenceService) ResolveRDS(ctx context.Context, args *ResolveRDSArgs)
 		var restConfig *rest.Config
 		var err error
 
-		if args.Kubeconfig != "" {
+		switch {
+		case args.ManagedCluster != "":
+			logger.Debug("Using ACM managed cluster for version detection", "managedCluster", args.ManagedCluster)
+			restConfig, err = BuildRestConfigForManagedCluster(ctx, args.ManagedCluster)
+			if err != nil {
+				return nil, err
+			}
+		case args.Kubeconfig != "":
 			logger.Debug("Using provided kubeconfig for version detection")
 
 			// Use DecodeOrParseKubeconfig to support both raw YAML and base64-encoded kubeconfig
-			kubeconfigData, err := DecodeOrParseKubeconfig(args.Kubeconfig)
-			if err != nil {
-				return nil, err
+			kubeconfigData, decodeErr := DecodeOrParseKubeconfig(args.Kubeconfig)
+			if decodeErr != nil {
+				return nil, decodeErr
 			}
 
 			restConfig, err = BuildSecureRestConfigFromBytes(kubeconfigData, args.Context)
 			if err != nil {
 				return nil, err
 			}
-		} else {
+		default:
 			logger.Debug("Using in-cluster config for version detection")
 			restConfig, err = rest.InClusterConfig()
 			if err != nil {
@@ -367,10 +385,11 @@ func wrapRegistryError(err error, repoRef string) error {
 
 // ResolveRDSArgs holds the parsed arguments for the kube_compare_resolve_rds operation.
 type ResolveRDSArgs struct {
-	Kubeconfig string
-	Context    string
-	RDSType    string
-	OCPVersion string // Optional: explicit OpenShift version
+	Kubeconfig     string
+	Context        string
+	ManagedCluster string // ACM managed (spoke) cluster name (optional)
+	RDSType        string
+	OCPVersion     string // Optional: explicit OpenShift version
 }
 
 // ExtractMajorMinorVersion extracts the major.minor version from a full version string.

@@ -291,6 +291,7 @@ Detect configuration drift between a Kubernetes/OpenShift cluster and a referenc
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
 | `kubeconfig` | string | No | Kubeconfig content for connecting to a remote cluster (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config or KUBECONFIG env. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. Only applicable when `kubeconfig` is provided. |
+| `managed_cluster` | string | No | Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with `kubeconfig`/`context`. Requires the server to run on the ACM hub. See [Connecting to an ACM managed cluster](#connecting-to-an-acm-managed-cluster). |
 
 **Example prompts:**
 
@@ -312,6 +313,7 @@ Get the correct Red Hat Telco RDS container reference for a cluster's OpenShift 
 | `ocp_version` | string | No | Explicit OpenShift version (e.g., `4.18`, `4.20.0`). If not provided, auto-detects from cluster. |
 | `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided and `ocp_version` is not set, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
+| `managed_cluster` | string | No | Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with `kubeconfig`/`context`. Requires the server to run on the ACM hub. See [Connecting to an ACM managed cluster](#connecting-to-an-acm-managed-cluster). |
 
 **Response:**
 
@@ -351,6 +353,7 @@ Validate an OpenShift cluster's compliance with Red Hat Telco RDS. This is the r
 | `all_resources` | boolean | No | Compare all resources of types mentioned in the reference. Default: `false`. |
 | `kubeconfig` | string | No | Kubeconfig content (raw YAML or base64-encoded, auto-detected). If not provided, uses in-cluster config. |
 | `context` | string | No | Kubernetes context name to use from the provided kubeconfig. |
+| `managed_cluster` | string | No | Name of an ACM managed (spoke) cluster to connect to via the hub. Mutually exclusive with `kubeconfig`/`context`. Requires the server to run on the ACM hub. See [Connecting to an ACM managed cluster](#connecting-to-an-acm-managed-cluster). |
 
 **Response:**
 
@@ -658,6 +661,109 @@ You can then provide this minimal kubeconfig content to the MCP tools directly o
 base64 < minimal-kubeconfig.yaml    # Works on both Linux and macOS
 ```
 
+### Connecting to an ACM managed cluster
+
+If the MCP server runs on an Advanced Cluster Management (ACM) hub, the
+`kube_compare_cluster_diff`, `kube_compare_resolve_rds`, and `kube_compare_validate_rds`
+tools can connect to a managed (spoke) cluster by name using the `managed_cluster`
+parameter, without you having to supply a kubeconfig:
+
+```json
+{
+  "reference": "https://example.com/metadata.yaml",
+  "managed_cluster": "spoke-1"
+}
+```
+
+When `managed_cluster` is set, the server:
+
+1. Reads the cluster-scoped `ManagedCluster` resource named `spoke-1` from the hub to
+   confirm the cluster is fully imported into ACM.
+2. Reads the `kube-compare-mcp` ManagedServiceAccount token secret from the `spoke-1` namespace
+   on the hub and uses its bearer token to authenticate to the spoke's API server.
+3. Reads the `ManagedProxyConfiguration` CR to locate the cluster-proxy addon namespace,
+   then reads the `cluster-proxy-addon-user` OpenShift Route in that namespace to obtain the
+   proxy host. The spoke is accessed as `https://<proxy-route-host>/spoke-1` — no direct
+   network path to the spoke is required.
+
+#### Prerequisites
+
+The following OCM addons must be enabled on the hub cluster before using `managed_cluster`:
+
+- **`cluster-proxy`** — exposes the `cluster-proxy-addon-user` Route on the hub, which acts
+  as a reverse proxy to each managed cluster. Enable it with
+  `clusteradm install hub-addon --names cluster-proxy` or through the ACM console.
+- **`managed-serviceaccount`** — creates a named service account on each spoke cluster and
+  exports its bearer token back to the hub as a Secret. Enable it with
+  `clusteradm install hub-addon --names managed-serviceaccount`.
+
+For each spoke cluster you want to access, create a `ManagedServiceAccount` CR in the spoke's
+namespace on the hub:
+
+```yaml
+apiVersion: authentication.open-cluster-management.io/v1beta1
+kind: ManagedServiceAccount
+metadata:
+  name: kube-compare-mcp
+  namespace: spoke-1          # the spoke cluster's namespace on the hub
+spec:
+  rotation: {}
+```
+
+The addon will create a service account named `kube-compare-mcp` on the spoke and write its
+token to a Secret named `kube-compare-mcp` in the `spoke-1` namespace on the hub. Grant the
+service account the RBAC permissions it needs on the spoke (typically read access to the
+resource types in your reference configuration). An example of the RBAC permissions is:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kube-compare-mcp-reader
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-compare-mcp-reader
+  labels:
+    app.kubernetes.io/name: kube-compare-mcp
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-compare-mcp-reader
+subjects:
+  - kind: ServiceAccount
+    name: kube-compare-mcp
+    namespace: open-cluster-management-agent-addon
+```
+
+Please note the above snippet grants read-only permissions on all Kubernetes resources in the
+spoke cluster. If you have strict security requirements, you will nbeed to explicitly list
+ only the resource types used in your specific reference configurations.
+
+Notes and restrictions:
+
+- The server must be running inside the ACM hub cluster (it uses in-cluster config to reach
+  the hub). If it is not, the call returns an error.
+- `managed_cluster` is **mutually exclusive** with `kubeconfig` and `context`; providing them
+  together returns a validation error.
+- If the `ManagedCluster` resource, the `kube-compare-mcp` token secret, the
+  `ManagedProxyConfiguration`, or the `cluster-proxy-addon-user` Route cannot be found on the
+  hub, the call returns an error explaining which one is missing.
+- The `baremetal_bios_diff` tool does **not** support `managed_cluster`, because BareMetalHost
+  resources are managed on the hub rather than on the spoke.
+- The hub service account needs read access to `ManagedCluster`, `ManagedProxyConfiguration`,
+  and `Route` resources, as well as to the ManagedServiceAccount token secrets in spoke
+  namespaces. The default [ClusterRole](deploy/clusterrole.yaml) already grants this.
+
 ### Security Considerations
 
 The server implements several security measures when processing kubeconfigs:
@@ -669,6 +775,11 @@ The server implements several security measures when processing kubeconfigs:
 | **Exec auth blocked** | Exec-based authentication providers are rejected to prevent arbitrary code execution |
 | **Auth plugins blocked** | Deprecated auth provider plugins are rejected |
 | **Error sanitization** | Sensitive information (tokens, passwords) is redacted from error messages |
+
+The `managed_cluster` path connects to the spoke using a ManagedServiceAccount token provisioned
+by the OCM addon. The spoke service account's permissions are controlled by the administrator
+via RBAC on the spoke cluster — follow the principle of least privilege and grant only the
+read access required for your reference configuration.
 
 **Supported authentication methods:**
 - Bearer tokens
